@@ -49,44 +49,7 @@ CREATE TABLE `company_details` (
 /*Data for the table `company_details` */
 
 insert  into `company_details`(`id`,`shop_name`,`address`,`gstin`,`print_type`,`printer_name`,`bank_details`,`barcode_printer`) values 
-(2,'Javera Collections','4,TSMO Syed Ali Nagar\r\nKurichi Main Road\r\nTirunelveli-627005','',2,'','Bank name:SBI\r\nNo : 74748499\r\nIFSC:37ADD','AP4909');
-
-/*Table structure for table `configure_bank_details` */
-
-DROP TABLE IF EXISTS `configure_bank_details`;
-
-CREATE TABLE `configure_bank_details` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `name` varchar(255) NOT NULL,
-  `is_blocked` tinyint unsigned NOT NULL DEFAULT '0',
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=latin1;
-
-/*Data for the table `configure_bank_details` */
-
-insert  into `configure_bank_details`(`id`,`name`,`is_blocked`) values 
-(1,'SBI BANK',0),
-(2,'CANARA BANK',0),
-(3,'AXIS BANK',0),
-(4,'IOB BANK',0);
-
-/*Table structure for table `configure_payment_type` */
-
-DROP TABLE IF EXISTS `configure_payment_type`;
-
-CREATE TABLE `configure_payment_type` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `name` varchar(255) NOT NULL,
-  `is_blocked` int unsigned NOT NULL DEFAULT '0',
-  `type_id` int unsigned NOT NULL DEFAULT '0',
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=latin1;
-
-/*Data for the table `configure_payment_type` */
-
-insert  into `configure_payment_type`(`id`,`name`,`is_blocked`,`type_id`) values 
-(1,'Cash',0,1),
-(2,'BANK',0,2);
+(2,'MOULANA AIR TRAVELS','No 6, Orathanadu','',2,'','','AP4909');
 
 /*Table structure for table `credit_days` */
 
@@ -1432,6 +1395,160 @@ CREATE TABLE `special_permission` (
 
 insert  into `special_permission`(`id`,`content`) values 
 (1,'allow to Zero stock billing ');
+
+/*Table structure for table `ticket_agent` */
+
+DROP TABLE IF EXISTS `ticket_agent`;
+
+CREATE TABLE `ticket_agent` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  `is_active` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+/*Data for the table `ticket_agent` */
+
+insert  into `ticket_agent`(`id`,`name`,`is_active`) values 
+(1,'AOS',1),
+(2,'FOY',1);
+
+/*Table structure for table `ticket_booking` */
+
+DROP TABLE IF EXISTS `ticket_booking`;
+
+CREATE TABLE `ticket_booking` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `pnr` varchar(100) DEFAULT NULL,
+  `ticket_no` varchar(20) DEFAULT NULL,
+  `booking_date` date NOT NULL,
+  `oneway_travel_date` date DEFAULT NULL,
+  `oneway_travel_time` time DEFAULT NULL,
+  `oneway_from_id` int unsigned DEFAULT NULL,
+  `oneway_to_id` int unsigned DEFAULT NULL,
+  `oneway_flight_no` varchar(100) DEFAULT NULL,
+  `oneway_airlines` varchar(255) DEFAULT NULL,
+  `return_travel_date` date DEFAULT NULL,
+  `return_travel_time` time DEFAULT NULL,
+  `return_from_id` int unsigned DEFAULT NULL,
+  `return_to_id` int unsigned DEFAULT NULL,
+  `return_flight_no` varchar(100) DEFAULT NULL,
+  `return_airlines` varchar(255) DEFAULT NULL,
+  `no_of_seats` int NOT NULL DEFAULT '1',
+  `phone` varchar(20) DEFAULT NULL,
+  `buy_agent_id` int unsigned DEFAULT NULL,
+  `buy_amount` decimal(10,2) DEFAULT NULL,
+  `buy_paid_amount` decimal(10,2) DEFAULT NULL,
+  `buy_payment_mode_id` int unsigned DEFAULT NULL,
+  `sell_agent_id` int unsigned DEFAULT NULL,
+  `sell_amount` decimal(10,2) DEFAULT NULL,
+  `sell_paid_amount` decimal(10,2) DEFAULT NULL,
+  `sell_payment_mode_id` int unsigned DEFAULT NULL,
+  `customer_name` varchar(255) DEFAULT NULL,
+  `customer_amount` decimal(10,2) DEFAULT NULL,
+  `cust_paid_amount` decimal(10,2) DEFAULT NULL,
+  `customer_payment_mode_id` int unsigned DEFAULT NULL,
+  `created_by` int DEFAULT NULL,
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+/*Data for the table `ticket_booking` */
+
+insert  into `ticket_booking`(`id`,`pnr`,`ticket_no`,`booking_date`,`oneway_travel_date`,`oneway_travel_time`,`oneway_from_id`,`oneway_to_id`,`oneway_flight_no`,`oneway_airlines`,`return_travel_date`,`return_travel_time`,`return_from_id`,`return_to_id`,`return_flight_no`,`return_airlines`,`no_of_seats`,`phone`,`buy_agent_id`,`buy_amount`,`buy_paid_amount`,`buy_payment_mode_id`,`sell_agent_id`,`sell_amount`,`sell_paid_amount`,`sell_payment_mode_id`,`customer_name`,`customer_amount`,`cust_paid_amount`,`customer_payment_mode_id`,`created_by`,`created_at`) values 
+(1,'PNR001','TKT-001','2026-05-19','2026-05-23','17:33:00',4,2,'1','Indigo',NULL,NULL,NULL,NULL,NULL,NULL,2,'9876543210',1,1000.00,500.00,2,NULL,NULL,NULL,NULL,'jaswa vijay',1500.00,500.00,2,1,'2026-05-19 17:34:08'),
+(2,'PNR002','TKT-002','2026-05-19','2026-05-30','17:37:00',3,1,'2','Indigo',NULL,NULL,NULL,NULL,NULL,NULL,1,'9876543210',NULL,NULL,NULL,NULL,1,5000.00,2000.00,1,NULL,NULL,NULL,NULL,1,'2026-05-19 17:37:50');
+
+/*Table structure for table `ticket_city` */
+
+DROP TABLE IF EXISTS `ticket_city`;
+
+CREATE TABLE `ticket_city` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  `is_active` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+/*Data for the table `ticket_city` */
+
+insert  into `ticket_city`(`id`,`name`,`is_active`) values 
+(1,'nagercoil city',1),
+(2,'Thiruvananthapuram',1),
+(3,'Delhi',1),
+(4,'Nagercoil',1);
+
+/*Table structure for table `ticket_ledger` */
+
+DROP TABLE IF EXISTS `ticket_ledger`;
+
+CREATE TABLE `ticket_ledger` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `booking_id` int unsigned NOT NULL,
+  `party_type` varchar(20) NOT NULL DEFAULT 'AGENT',
+  `party_name` varchar(255) DEFAULT NULL,
+  `agent_id` int unsigned DEFAULT NULL,
+  `bill_amount` decimal(10,2) DEFAULT NULL,
+  `transaction_type` varchar(5) NOT NULL COMMENT 'DR = agent owes us | CR = we owe agent',
+  `amount` decimal(10,2) DEFAULT NULL,
+  `payment_mode_id` int unsigned DEFAULT NULL,
+  `remarks` varchar(500) DEFAULT NULL,
+  `transaction_date` date NOT NULL,
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_ticket_ledger_agent` (`agent_id`),
+  KEY `idx_ticket_ledger_booking` (`booking_id`)
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+/*Data for the table `ticket_ledger` */
+
+insert  into `ticket_ledger`(`id`,`booking_id`,`party_type`,`party_name`,`agent_id`,`bill_amount`,`transaction_type`,`amount`,`payment_mode_id`,`remarks`,`transaction_date`,`created_at`) values 
+(1,1,'BUY_AGENT',NULL,1,1000.00,'CR',500.00,2,'Buy ticket | PNR: PNR001','2026-05-19','2026-05-19 17:34:08'),
+(2,1,'CUSTOMER','jaswa vijay',NULL,1500.00,'DR',500.00,2,'Customer payment | PNR: PNR001','2026-05-19','2026-05-19 17:34:08'),
+(3,1,'BUY_AGENT',NULL,1,0.00,'CR',200.00,2,'Balance collection','2026-05-19','2026-05-19 17:36:05'),
+(4,2,'SELL_AGENT',NULL,1,5000.00,'DR',2000.00,1,'Sell ticket | PNR: PNR002','2026-05-19','2026-05-19 17:37:50'),
+(5,2,'SELL_AGENT',NULL,1,0.00,'DR',1000.00,1,'Balance collection','2026-05-19','2026-05-19 18:10:07');
+
+/*Table structure for table `ticket_passenger` */
+
+DROP TABLE IF EXISTS `ticket_passenger`;
+
+CREATE TABLE `ticket_passenger` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `booking_id` int unsigned NOT NULL,
+  `seat_no` int DEFAULT NULL,
+  `passenger_name` varchar(255) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_ticket_passenger_booking` (`booking_id`)
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+/*Data for the table `ticket_passenger` */
+
+insert  into `ticket_passenger`(`id`,`booking_id`,`seat_no`,`passenger_name`) values 
+(1,1,1,'Jaswa Vijay'),
+(2,1,2,'vijay'),
+(3,2,1,'fig');
+
+/*Table structure for table `ticket_payment_mode` */
+
+DROP TABLE IF EXISTS `ticket_payment_mode`;
+
+CREATE TABLE `ticket_payment_mode` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `modes` varchar(255) DEFAULT NULL,
+  `is_active` int DEFAULT '1',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+/*Data for the table `ticket_payment_mode` */
+
+insert  into `ticket_payment_mode`(`id`,`modes`,`is_active`) values 
+(1,'CASH',1),
+(2,'UPI',1),
+(3,'DEBIT CARD',1),
+(4,'CREDIT CARD',1),
+(5,'NEFT',1),
+(6,'IMPS',1);
 
 /*Table structure for table `user_modules` */
 
