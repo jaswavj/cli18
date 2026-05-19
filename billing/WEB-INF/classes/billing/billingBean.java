@@ -6156,6 +6156,23 @@ public Vector getTicketPaymentModes() throws Exception {
  *   - Sell to agent   → DR entry (agent owes us)
  * Returns the new booking id.
  */
+public String getTicketNo(int id) {
+    Connection con = null; PreparedStatement pt = null; ResultSet rs = null;
+    try {
+        con = util.DBConnectionManager.getConnectionFromPool();
+        pt = con.prepareStatement("SELECT ticket_no FROM ticket_booking WHERE id=? LIMIT 1");
+        pt.setInt(1, id);
+        rs = pt.executeQuery();
+        if (rs.next() && rs.getString(1) != null) return rs.getString(1);
+    } catch (Exception e) { e.printStackTrace(); }
+    finally {
+        try { if (rs!=null) rs.close(); } catch (Exception e) {}
+        try { if (pt!=null) pt.close(); } catch (Exception e) {}
+        try { if (con!=null) con.close(); } catch (Exception e) {}
+    }
+    return String.format("TKT-%03d", id);
+}
+
 public int saveTicketBooking(
         String pnr, String bookingDate,
         String onewayDate, String onewayTime, int onewayFromId, int onewayToId,
@@ -6468,7 +6485,7 @@ public Vector getTicketById(int id) {
             " LEFT JOIN ticket_payment_mode sm ON sm.id = b.sell_payment_mode_id" +
             " LEFT JOIN ticket_payment_mode cm ON cm.id = b.customer_payment_mode_id" +
             " WHERE b.id = ? LIMIT 1";  // ticket_no appended
-        sql = sql.replace("b.created_at", "b.created_at, b.ticket_no");
+        sql = sql.replace("b.created_at", "b.created_at, b.ticket_no, COALESCE(b.sell_paid_amount, b.sell_amount, 0) AS sell_paid, COALESCE(b.cust_paid_amount, b.customer_amount, 0) AS cust_paid");
         pt = con.prepareStatement(sql);
         pt.setInt(1, id);
         rs = pt.executeQuery();
@@ -6855,6 +6872,200 @@ public Vector getAgentStatement(String fromDate, String toDate, int agentId) {
         if (con != null) try { con.close(); } catch (Exception e) { ; }
     }
     return result;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TICKET DASHBOARD STATS
+// ─────────────────────────────────────────────────────────────────────────────
+// Ticket Dashboard Stats — delegates to parameterised version with current date
+// ─────────────────────────────────────────────────────────────────────────────
+public Map<String,Object> getTicketDashboardStats() {
+    java.util.Calendar _cal = java.util.Calendar.getInstance();
+    return getTicketDashboardStats(_cal.get(java.util.Calendar.YEAR), _cal.get(java.util.Calendar.MONTH) + 1);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Ticket Dashboard Stats for a specific year + month
+// ─────────────────────────────────────────────────────────────────────────────
+public Map<String,Object> getTicketDashboardStats(int year, int month) {
+    Map<String,Object> stats = new java.util.LinkedHashMap<String,Object>();
+    Connection con = null; PreparedStatement pt = null; ResultSet rs = null;
+    try {
+        con = util.DBConnectionManager.getConnectionFromPool();
+
+        // ── Today stats ──────────────────────────────────────────────────────
+        pt = con.prepareStatement(
+            "SELECT COUNT(*) AS cnt," +
+            " SUM(COALESCE(sell_amount,0)+COALESCE(customer_amount,0)) AS sell," +
+            " IFNULL(SUM(buy_amount),0) AS buy" +
+            " FROM ticket_booking WHERE DATE(booking_date)=CURDATE()");
+        rs = pt.executeQuery();
+        if (rs.next()) {
+            stats.put("todayCount", rs.getInt("cnt"));
+            stats.put("todaySell",  rs.getDouble("sell"));
+            stats.put("todayBuy",   rs.getDouble("buy"));
+            double sell = rs.getDouble("sell"), buy = rs.getDouble("buy");
+            stats.put("todayProfit", sell - buy);
+        } else { stats.put("todayCount",0); stats.put("todaySell",0.0); stats.put("todayBuy",0.0); stats.put("todayProfit",0.0); }
+        rs.close(); pt.close();
+
+        // ── Selected month stats ──────────────────────────────────────────────
+        pt = con.prepareStatement(
+            "SELECT COUNT(*) AS cnt," +
+            " SUM(COALESCE(sell_amount,0)+COALESCE(customer_amount,0)) AS sell," +
+            " IFNULL(SUM(buy_amount),0) AS buy" +
+            " FROM ticket_booking" +
+            " WHERE MONTH(booking_date)=? AND YEAR(booking_date)=?");
+        pt.setInt(1, month); pt.setInt(2, year);
+        rs = pt.executeQuery();
+        if (rs.next()) {
+            stats.put("monthCount", rs.getInt("cnt"));
+            stats.put("monthSell",  rs.getDouble("sell"));
+            stats.put("monthBuy",   rs.getDouble("buy"));
+            stats.put("monthProfit", rs.getDouble("sell") - rs.getDouble("buy"));
+        } else { stats.put("monthCount",0); stats.put("monthSell",0.0); stats.put("monthBuy",0.0); stats.put("monthProfit",0.0); }
+        rs.close(); pt.close();
+
+        // ── Total outstanding (all parties) ──────────────────────────────────
+        pt = con.prepareStatement(
+            "SELECT IFNULL(SUM(CASE" +
+            "  WHEN COALESCE(bill_amount,0)>0 AND transaction_type='DR' THEN bill_amount-amount" +
+            "  WHEN COALESCE(bill_amount,0)>0 AND transaction_type='CR' THEN -(bill_amount-amount)" +
+            "  WHEN COALESCE(bill_amount,0)<=0 AND transaction_type='DR' THEN -amount" +
+            "  WHEN COALESCE(bill_amount,0)<=0 AND transaction_type='CR' THEN amount" +
+            "  ELSE 0 END),0) AS outstanding FROM ticket_ledger");
+        rs = pt.executeQuery();
+        stats.put("totalOutstanding", rs.next() ? rs.getDouble("outstanding") : 0.0);
+        rs.close(); pt.close();
+
+        // ── Total agent outstanding ───────────────────────────────────────────
+        pt = con.prepareStatement(
+            "SELECT IFNULL(SUM(CASE" +
+            "  WHEN COALESCE(bill_amount,0)>0 AND transaction_type='DR' THEN bill_amount-amount" +
+            "  WHEN COALESCE(bill_amount,0)>0 AND transaction_type='CR' THEN -(bill_amount-amount)" +
+            "  WHEN COALESCE(bill_amount,0)<=0 AND transaction_type='DR' THEN -amount" +
+            "  WHEN COALESCE(bill_amount,0)<=0 AND transaction_type='CR' THEN amount" +
+            "  ELSE 0 END),0) AS outstanding FROM ticket_ledger WHERE agent_id IS NOT NULL");
+        rs = pt.executeQuery();
+        stats.put("totalAgentOutstanding", rs.next() ? rs.getDouble("outstanding") : 0.0);
+        rs.close(); pt.close();
+
+        // ── Bookings for selected month ───────────────────────────────────────
+        pt = con.prepareStatement(
+            "SELECT b.id, b.ticket_no, b.pnr, b.booking_date," +
+            " IFNULL(cf.name,'') AS from_city, IFNULL(ct.name,'') AS to_city," +
+            " b.no_of_seats, IFNULL(b.customer_name,'') AS customer_name," +
+            " IFNULL(b.sell_amount,0)+IFNULL(b.customer_amount,0) AS sell_amount," +
+            " IFNULL(b.buy_amount,0) AS buy_amount" +
+            " FROM ticket_booking b" +
+            " LEFT JOIN ticket_city cf ON cf.id=b.oneway_from_id" +
+            " LEFT JOIN ticket_city ct ON ct.id=b.oneway_to_id" +
+            " WHERE MONTH(b.booking_date)=? AND YEAR(b.booking_date)=?" +
+            " ORDER BY b.booking_date DESC, b.id DESC LIMIT 100");
+        pt.setInt(1, month); pt.setInt(2, year);
+        rs = pt.executeQuery();
+        Vector recent = new Vector();
+        while (rs.next()) {
+            Vector row = new Vector();
+            row.add(rs.getInt("id"));
+            row.add(rs.getString("ticket_no") != null ? rs.getString("ticket_no") : "");
+            row.add(rs.getString("pnr") != null ? rs.getString("pnr") : "");
+            row.add(rs.getString("booking_date"));
+            row.add(rs.getString("from_city"));
+            row.add(rs.getString("to_city"));
+            row.add(rs.getInt("no_of_seats"));
+            row.add(rs.getString("customer_name"));
+            row.add(rs.getDouble("sell_amount"));
+            row.add(rs.getDouble("buy_amount"));
+            recent.add(row);
+        }
+        stats.put("recentBookings", recent);
+        rs.close(); pt.close();
+
+        // ── Daily chart — all days of selected month (0 for days with no bookings) ───
+        // Build first/last day of the selected month in Java
+        java.util.Calendar c1 = java.util.Calendar.getInstance();
+        c1.set(year, month - 1, 1);
+        String firstDay = String.format("%04d-%02d-01", year, month);
+        String lastDay  = String.format("%04d-%02d-%02d", year, month,
+                            c1.getActualMaximum(java.util.Calendar.DAY_OF_MONTH));
+        pt = con.prepareStatement(
+            "SELECT DATE_FORMAT(d,'%d %b') AS lbl," +
+            " COALESCE(b.cnt,0) AS cnt," +
+            " COALESCE(b.sell,0) AS sell" +
+            " FROM (" +
+            "   SELECT DATE(?) + INTERVAL (a.n + b10.n*10) DAY AS d" +
+            "   FROM (SELECT 0 n UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4" +
+            "         UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9) a" +
+            "   CROSS JOIN (SELECT 0 n UNION ALL SELECT 1 UNION ALL SELECT 2) b10" +
+            " ) days" +
+            " LEFT JOIN (" +
+            "   SELECT DATE(booking_date) AS bdate, COUNT(id) AS cnt, SUM(COALESCE(sell_amount,0)+COALESCE(customer_amount,0)) AS sell" +
+            "   FROM ticket_booking WHERE booking_date BETWEEN ? AND ?" +
+            "   GROUP BY DATE(booking_date)" +
+            " ) b ON b.bdate = days.d" +
+            " WHERE days.d BETWEEN ? AND ?" +
+            " ORDER BY days.d ASC");
+        pt.setString(1, firstDay);
+        pt.setString(2, firstDay);
+        pt.setString(3, lastDay);
+        pt.setString(4, firstDay);
+        pt.setString(5, lastDay);
+        rs = pt.executeQuery();
+        Vector chart = new Vector();
+        while (rs.next()) {
+            Vector row = new Vector();
+            row.add(rs.getString("lbl"));
+            row.add(rs.getInt("cnt"));
+            row.add(rs.getDouble("sell"));
+            chart.add(row);
+        }
+        stats.put("weeklyChart", chart);
+        rs.close(); pt.close();
+
+        // ── Agent outstanding: receivable (they owe us) and payable (we owe them) ───
+        pt = con.prepareStatement(
+            "SELECT a.name," +
+            " SUM(CASE" +
+            "  WHEN COALESCE(l.bill_amount,0)>0 AND l.transaction_type='DR' THEN l.bill_amount-l.amount" +
+            "  WHEN COALESCE(l.bill_amount,0)>0 AND l.transaction_type='CR' THEN -(l.bill_amount-l.amount)" +
+            "  WHEN COALESCE(l.bill_amount,0)<=0 AND l.transaction_type='DR' THEN -l.amount" +
+            "  WHEN COALESCE(l.bill_amount,0)<=0 AND l.transaction_type='CR' THEN l.amount" +
+            "  ELSE 0 END) AS outstanding" +
+            " FROM ticket_ledger l" +
+            " JOIN ticket_agent a ON a.id=l.agent_id" +
+            " WHERE l.agent_id IS NOT NULL" +
+            " GROUP BY l.agent_id, a.name" +
+            " HAVING ABS(outstanding) > 0.005" +
+            " ORDER BY ABS(outstanding) DESC");
+        rs = pt.executeQuery();
+        Vector agentsReceivable = new Vector(); // outstanding > 0: they owe us
+        Vector agentsPayable    = new Vector(); // outstanding < 0: we owe them
+        while (rs.next()) {
+            double outstanding = rs.getDouble("outstanding");
+            Vector row = new Vector();
+            row.add(rs.getString("name"));
+            row.add(Math.abs(outstanding));
+            if (outstanding > 0.005) {
+                if (agentsReceivable.size() < 5) agentsReceivable.add(row);
+            } else if (outstanding < -0.005) {
+                if (agentsPayable.size() < 5) agentsPayable.add(row);
+            }
+        }
+        stats.put("agentsReceivable", agentsReceivable);
+        stats.put("agentsPayable",    agentsPayable);
+        stats.put("topAgentsDue", agentsReceivable); // backward compat
+        rs.close(); pt.close();
+
+    } catch (Exception e) {
+        e.printStackTrace();
+        if (!stats.containsKey("todayCount")) stats.put("todayCount", 0);
+    } finally {
+        if (rs  != null) try { rs.close();  } catch (Exception e) { ; }
+        if (pt  != null) try { pt.close();  } catch (Exception e) { ; }
+        if (con != null) try { con.close(); } catch (Exception e) { ; }
+    }
+    return stats;
 }
 
 }

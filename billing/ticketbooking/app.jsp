@@ -66,7 +66,7 @@ response.setDateHeader("Expires", 0);
         function loadBillingPage() {
             document.body.innerHTML = `
                 <iframe 
-                    src="billing.jsp" 
+                    src="../billing/billing.jsp" 
                     width="100%" 
                     height="100%" 
                     frameborder="0"

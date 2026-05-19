@@ -53,6 +53,17 @@ String custName    = row.get(23) != null ? String.valueOf(row.get(23)) : "";
 String custAmt     = row.get(24) != null ? String.valueOf(row.get(24)) : "";
 String custMode    = row.get(25) != null ? String.valueOf(row.get(25)) : "";
 String ticketNo    = row.get(27) != null ? String.valueOf(row.get(27)) : "";
+double sellPaid    = row.size() > 28 && row.get(28) != null ? ((Number)row.get(28)).doubleValue() : 0.0;
+double custPaid    = row.size() > 29 && row.get(29) != null ? ((Number)row.get(29)).doubleValue() : 0.0;
+
+// Payment summary calculations
+double totalSell   = sellAmt.isEmpty() ? 0.0 : Double.parseDouble(sellAmt.replaceAll("[^\\d.]",""));
+double totalCust   = custAmt.isEmpty() ? 0.0 : Double.parseDouble(custAmt.replaceAll("[^\\d.]",""));
+double grandTotal  = totalSell + totalCust;
+double grandPaid   = sellPaid + custPaid;
+double grandBal    = grandTotal - grandPaid;
+java.text.DecimalFormat pf = new java.text.DecimalFormat("#,##0.00");
+boolean hasPaySummary = grandTotal > 0;
 boolean hasRet     = retDate != null && !retDate.trim().isEmpty();
 String ctx = request.getContextPath();
 %>
@@ -185,20 +196,33 @@ body {
 .pax-sign { width: 35mm; }
 .pax-sign-inner { border-bottom: 1pt solid #94a3b8; height: 7mm; }
 
+/* ── SIDE-BY-SIDE PAX + TXN ── */
+.pax-txn-grid { display: flex; border-top: 1pt solid #e2e8f0; }
+.pax-col { flex: 3; border-right: 1pt solid #e2e8f0; min-width: 0; }
+.txn-col { flex: 2; min-width: 0; }
+.pax-col .sec-head,
+.txn-col .sec-head { border-top: none; }
+
 /* ── TRANSACTION TABLE ── */
 .txn-table { width: 100%; border-collapse: collapse; }
-.txn-table td { padding: 2mm 5mm; font-size: 8.5pt; border-bottom: 1pt solid #f1f5f9; }
-.txn-type-cell { width: 28mm; }
+.txn-table td { padding: 1.5mm 3mm; font-size: 8pt; border-bottom: 1pt solid #f1f5f9; }
+.txn-type-cell { width: 22mm; }
 .txn-badge {
-    display: inline-block; padding: 1pt 6pt; border-radius: 3pt;
-    font-size: 7pt; font-weight: 800; text-transform: uppercase; letter-spacing: .3pt;
+    display: inline-block; padding: 1pt 5pt; border-radius: 3pt;
+    font-size: 6.5pt; font-weight: 800; text-transform: uppercase; letter-spacing: .3pt;
 }
 .txn-badge.buy  { background: #fff3e0; color: #bf6000; border: 1pt solid #ffcc80; }
 .txn-badge.sell { background: #e8f5e9; color: #2e7d32; border: 1pt solid #a5d6a7; }
 .txn-badge.cust { background: #e3f2fd; color: #0d47a1; border: 1pt solid #90caf9; }
-.txn-agent { font-weight: 700; color: #1a2744; font-size: 9pt; }
-.txn-mode  { font-size: 8pt; color: #64748b; }
-.txn-amt   { text-align: right; font-weight: 800; color: #059669; font-size: 10pt; white-space: nowrap; }
+.txn-agent { font-weight: 700; color: #1a2744; font-size: 8pt; }
+.txn-mode  { font-size: 7.5pt; color: #64748b; }
+.txn-amt   { text-align: right; font-weight: 800; color: #059669; font-size: 9pt; white-space: nowrap; }
+
+/* ── COMPACT FLIGHT SECTION FOR RETURN TICKETS ── */
+.has-ret .flt-from, .has-ret .flt-to { font-size: 13pt; }
+.has-ret .flt-table .flt-route td { padding: 2mm 4mm 1.5mm; }
+.has-ret .flt-table td { padding: 1.5mm 4mm; }
+.has-ret .sec-head { padding: 1.5mm 5mm 1mm; }
 
 /* ── FOOTER ── */
 .tk-footer {
@@ -212,6 +236,15 @@ body {
 .tk-footer-left  { color: rgba(255,255,255,.65); font-size: 7pt; }
 .tk-footer-right { color: rgba(255,255,255,.65); font-size: 7pt; text-align: right; }
 .tk-footer-mid   { color: #c9922a; font-size: 8pt; font-weight: 800; letter-spacing: .3pt; text-align: center; }
+.jasxbill-promo {
+    text-align: right;
+    padding: 1mm 3mm 1.5mm;
+    font-size: 5.5pt;
+    color: #94a3b8;
+    letter-spacing: .2pt;
+}
+.jasxbill-promo a { color: #94a3b8; text-decoration: none; }
+@media print { .jasxbill-promo a { color: #94a3b8; } }
 
 /* ── SIGN SECTION ── */
 .sign-section {
@@ -222,6 +255,46 @@ body {
 .sign-box-line { border-bottom: 1pt solid #94a3b8; height: 8mm; margin: 0 2mm; }
 .sign-box-lbl { font-size: 7pt; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: .4pt; margin-top: 1.5mm; }
 
+/* ── PAYMENT SUMMARY BOX ── */
+.pay-summary {
+    border-top: 1pt solid #1a2744;
+    overflow: hidden;
+}
+.pay-summary-head {
+    background: #1a2744;
+    color: #fff;
+    font-size: 7pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .6pt;
+    padding: 1.5mm 3mm;
+    display: flex;
+    align-items: center;
+    gap: 2mm;
+}
+.pay-summary-head .gold { color: #c9922a; }
+.pay-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5mm 3mm;
+    border-bottom: 1pt solid #e8edf5;
+    font-size: 8pt;
+}
+.pay-row:last-child { border-bottom: none; }
+.pay-row-lbl { color: #475569; font-weight: 600; }
+.pay-row-amt { font-weight: 800; }
+.pay-total   { background: #f8fafc; }
+.pay-total .pay-row-lbl { color: #1a2744; font-weight: 700; }
+.pay-total .pay-row-amt { color: #1a2744; font-size: 9pt; }
+.pay-paid .pay-row-amt  { color: #059669; }
+.pay-bal-ok  { background: #f0fdf4; }
+.pay-bal-due { background: #fff7ed; }
+.pay-bal-ok  .pay-row-lbl { color: #059669; font-weight: 700; }
+.pay-bal-due .pay-row-lbl { color: #d97706; font-weight: 700; }
+.pay-bal-ok  .pay-row-amt { color: #059669; font-size: 9pt; }
+.pay-bal-due .pay-row-amt { color: #d97706; font-size: 9pt; }
+
 .pt-1 { padding-top: 1mm; }
 </style>
 </head>
@@ -229,11 +302,11 @@ body {
 
 <!-- No-print controls -->
 <div class="no-print">
-  <button class="btn-print" onclick="window.print()">&#9113; Print Ticket</button>
+  <button class="btn-print" onclick="doPrint()">&#9113; Print Ticket</button>
   <button class="btn-close" onclick="window.close()">&#10005; Close</button>
 </div>
 
-<div class="ticket">
+<div class="ticket <%=hasRet?"has-ret":""%>">
 
   <!-- ═══ HEADER ═══ -->
   <div class="tk-header">
@@ -332,60 +405,91 @@ body {
   </table>
   <%}%>
 
-  <!-- ═══ PASSENGERS ═══ -->
-  <div class="sec-head">
-    <span class="sec-head-icon">&#128101;</span>
-    <span class="sec-head-title">Passengers</span>
-  </div>
-  <table class="pax-table">
-    <thead>
-      <tr>
-        <th style="width:10mm;text-align:center;">#</th>
-        <th>Passenger Name</th>
-      </tr>
-    </thead>
-    <tbody>
-      <%if (passengers.isEmpty()) {
-          for (int pi = 1; pi <= Integer.parseInt(seats.equals("-")?"1":seats); pi++) {%>
-      <tr>
-        <td class="pax-no"><%=pi%></td>
-        <td>&nbsp;</td>
-      </tr>
-      <%}} else { for (int pi = 0; pi < passengers.size(); pi++) {
-          Vector prow = (Vector) passengers.get(pi);
-          String pNo   = prow.get(0) != null ? String.valueOf(prow.get(0)) : String.valueOf(pi+1);
-          String pName = prow.get(1) != null ? String.valueOf(prow.get(1)) : "";%>
-      <tr>
-        <td class="pax-no"><%=pNo%></td>
-        <td><%=pName.isEmpty()?"&nbsp;":pName%></td>
-      </tr>
-      <%}}%>
-    </tbody>
-  </table>
+  <!-- ═══ PASSENGERS + TRANSACTION (side-by-side) ═══ -->
+  <div class="pax-txn-grid">
+    <!-- Left: Passengers -->
+    <div class="pax-col">
+      <div class="sec-head">
+        <span class="sec-head-icon">&#128101;</span>
+        <span class="sec-head-title">Passengers</span>
+      </div>
+      <table class="pax-table">
+        <thead>
+          <tr>
+            <th style="width:10mm;text-align:center;">#</th>
+            <th>Name</th>
+          </tr>
+        </thead>
+        <tbody>
+          <%if (passengers.isEmpty()) {
+              for (int pi = 1; pi <= Integer.parseInt(seats.equals("-")?"1":seats); pi++) {%>
+          <tr>
+            <td class="pax-no"><%=pi%></td>
+            <td>&nbsp;</td>
+          </tr>
+          <%}} else { for (int pi = 0; pi < passengers.size(); pi++) {
+              Vector prow = (Vector) passengers.get(pi);
+              String pNo   = prow.get(0) != null ? String.valueOf(prow.get(0)) : String.valueOf(pi+1);
+              String pName = prow.get(1) != null ? String.valueOf(prow.get(1)) : "";%>
+          <tr>
+            <td class="pax-no"><%=pNo%></td>
+            <td><%=pName.isEmpty()?"&nbsp;":pName%></td>
+          </tr>
+          <%}}%>
+        </tbody>
+      </table>
+    </div><!-- /pax-col -->
 
-  <%if (!sellAgent.isEmpty() || !custName.isEmpty() || !custAmt.isEmpty()) {%>
-  <!-- ═══ TRANSACTION ═══ -->
-  <div class="sec-head">
-    <span class="sec-head-icon">&#9881;</span>
-    <span class="sec-head-title">Transaction</span>
-  </div>
-  <table class="txn-table">
-    <%if (!sellAgent.isEmpty()) {%>
-    <tr>
-      <td class="txn-type-cell"><span class="txn-badge sell">Sell Agent</span></td>
-      <td><div class="txn-agent"><%=sellAgent%></div><div class="txn-mode"><%=sellMode.isEmpty()?"":sellMode%></div></td>
-      <td class="txn-amt">&#8377; <%=sellAmt.isEmpty()?"—":sellAmt%></td>
-    </tr>
+    <!-- Right: Transaction + Payment Summary -->
+    <%if (!buyAgent.isEmpty() || !sellAgent.isEmpty() || !custName.isEmpty() || !custAmt.isEmpty() || hasPaySummary) {%>
+    <div class="txn-col">
+      <div class="sec-head">
+        <span class="sec-head-icon">&#9881;</span>
+        <span class="sec-head-title">Transaction</span>
+      </div>
+      <table class="txn-table">
+        <%if (!buyAgent.isEmpty()) {%>
+        <tr>
+          <td class="txn-type-cell"><span class="txn-badge buy">Buy</span></td>
+          <td><div class="txn-agent"><%=buyAgent%></div><div class="txn-mode"><%=buyMode.isEmpty()?"":buyMode%></div></td>
+          <td class="txn-amt">&#8377;<%=buyAmt.isEmpty()?"—":buyAmt%></td>
+        </tr>
+        <%}%>
+        <%if (!sellAgent.isEmpty()) {%>
+        <tr>
+          <td class="txn-type-cell"><span class="txn-badge sell">Sell</span></td>
+          <td><div class="txn-agent"><%=sellAgent%></div><div class="txn-mode"><%=sellMode.isEmpty()?"":sellMode%></div></td>
+          <td class="txn-amt">&#8377;<%=sellAmt.isEmpty()?"—":sellAmt%></td>
+        </tr>
+        <%}%>
+        <%if (!custName.isEmpty() || !custAmt.isEmpty()) {%>
+        <tr>
+          <td class="txn-type-cell"><span class="txn-badge cust">Cust.</span></td>
+          <td><div class="txn-agent"><%=custName.isEmpty()?"—":custName%></div><div class="txn-mode"><%=custMode.isEmpty()?"":custMode%></div></td>
+          <td class="txn-amt">&#8377;<%=custAmt.isEmpty()?"—":custAmt%></td>
+        </tr>
+        <%}%>
+      </table>
+      <%if (hasPaySummary) {%>
+      <div class="pay-summary">
+        <div class="pay-summary-head"><span class="gold">&#9670;</span> Payment</div>
+        <div class="pay-row pay-total">
+          <span class="pay-row-lbl">Total</span>
+          <span class="pay-row-amt">&#8377;&nbsp;<%=pf.format(grandTotal)%></span>
+        </div>
+        <div class="pay-row pay-paid">
+          <span class="pay-row-lbl">Paid</span>
+          <span class="pay-row-amt">&#8377;&nbsp;<%=pf.format(grandPaid)%></span>
+        </div>
+        <div class="pay-row <%=grandBal <= 0.005 ? "pay-bal-ok" : "pay-bal-due"%>">
+          <span class="pay-row-lbl"><%=grandBal <= 0.005 ? "&#10003; Settled" : "Balance"%></span>
+          <span class="pay-row-amt">&#8377;&nbsp;<%=pf.format(Math.abs(grandBal))%></span>
+        </div>
+      </div>
+      <%}%>
+    </div><!-- /txn-col -->
     <%}%>
-    <%if (!custName.isEmpty() || !custAmt.isEmpty()) {%>
-    <tr>
-      <td class="txn-type-cell"><span class="txn-badge cust">Customer</span></td>
-      <td><div class="txn-agent"><%=custName.isEmpty()?"—":custName%></div><div class="txn-mode"><%=custMode.isEmpty()?"":custMode%></div></td>
-      <td class="txn-amt">&#8377; <%=custAmt.isEmpty()?"—":custAmt%></td>
-    </tr>
-    <%}%>
-  </table>
-  <%}%>
+  </div><!-- /pax-txn-grid -->
 
   <!-- ═══ SIGN SECTION ═══ -->
   <div class="sign-section">
@@ -405,14 +509,23 @@ body {
     <div class="tk-footer-mid">Thank you for choosing <%=shopName%></div>
     <div class="tk-footer-right">PNR: <%=pnrVal%></div>
   </div>
+  <div class="jasxbill-promo">Powered by JASXBILL &mdash; Smart Billing Software &bull; 8667214152</div>
 
 </div><!-- /ticket -->
 
 <script>
-// Auto-open print dialog
+function doPrint() {
+    window.print();
+    // afterprint fires when dialog closes (print or cancel)
+    window.addEventListener('afterprint', function() {
+        window.close();
+    }, { once: true });
+}
+
+// Auto-open print dialog on load
 window.addEventListener('load', function() {
     if (window.opener || window.history.length <= 1) {
-        setTimeout(() => window.print(), 400);
+        setTimeout(doPrint, 400);
     }
 });
 </script>

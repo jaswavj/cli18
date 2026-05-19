@@ -90,12 +90,13 @@ for (int i = 0; i < vecPer.size(); i++) {
     <div class="sidebar-dropdown">
       <a href="#" class="sidebar-item" data-bs-toggle="collapse" data-bs-target="#billingMenu">
         <i class="fas fa-file-invoice"></i>
-        <span>Billing</span>
+        <span>Ticket</span>
         <i class="fas fa-chevron-down ms-auto small"></i>
       </a>
       <div class="collapse sidebar-submenu" id="billingMenu">
-        <a href="<%=request.getContextPath()%>/billing/billing.jsp" class="sidebar-subitem">
-          <i class="fa-solid fa-receipt" style="margin-right:5px;font-size:11px;"></i>Sales Billing
+
+        <a href="<%=request.getContextPath()%>/ticketbooking/ticketDashboard.jsp" class="sidebar-subitem">
+          <i class="fa-solid fa-gauge-high" style="margin-right:5px;font-size:11px;"></i>Ticket Dashboard
         </a>
         <a href="<%=request.getContextPath()%>/ticketbooking/page.jsp" class="sidebar-subitem">
           <i class="fa-solid fa-plane-departure" style="margin-right:5px;font-size:11px;"></i>Ticket Booking
@@ -107,7 +108,7 @@ for (int i = 0; i < vecPer.size(); i++) {
           <i class="fa-solid fa-chart-bar" style="margin-right:5px;font-size:11px;"></i>Ticket Report
         </a>
         <a href="<%=request.getContextPath()%>/ticketbooking/ledgerReport.jsp" class="sidebar-subitem">
-          <i class="fa-solid fa-book-open" style="margin-right:5px;font-size:11px;"></i>Ticket Ledger
+          <i class="fa-solid fa-book-open" style="margin-right:5px;font-size:11px;"></i>Balance Collection
         </a>
         <a href="<%=request.getContextPath()%>/ticketbooking/agentStatement.jsp" class="sidebar-subitem">
           <i class="fa-solid fa-file-lines" style="margin-right:5px;font-size:11px;"></i>Agent Statement
@@ -120,32 +121,15 @@ for (int i = 0; i < vecPer.size(); i++) {
     <div class="sidebar-dropdown">
       <a href="#" class="sidebar-item" data-bs-toggle="collapse" data-bs-target="#productMenu">
         <i class="fas fa-box"></i>
-        <span>Configuration</span>
+        <span>Masters</span>
         <i class="fas fa-chevron-down ms-auto"></i>
       </a>
       <div class="collapse sidebar-submenu" id="productMenu">
 
-        <a href="<%=request.getContextPath()%>/product/master/customer/page.jsp" class="sidebar-subitem">Customers</a>
         <a href="<%=request.getContextPath()%>/admin/city/page.jsp" class="sidebar-subitem">City</a>
         <a href="<%=request.getContextPath()%>/admin/agent/page.jsp" class="sidebar-subitem">Agent</a>
 
         
-      </div>
-    </div>
-    <% } %>
-
-<% if (permissions.contains(8)) { %>
-    <div class="sidebar-dropdown">
-      <a href="#" class="sidebar-item" data-bs-toggle="collapse" data-bs-target="#statisticsMenu">
-        <i class="fas fa-chart-pie"></i>
-        <span>Statistics</span>
-        <i class="fas fa-chevron-down ms-auto"></i>
-      </a>
-      <div class="collapse sidebar-submenu" id="statisticsMenu">
-        <a href="<%=request.getContextPath()%>/reports/dashboard/page.jsp" class="sidebar-subitem">
-          <i class="fas fa-chart-line me-2"></i>Dashboard
-        </a>
-
       </div>
     </div>
     <% } %>

@@ -106,7 +106,8 @@ try {
         buyPaidAmount, sellPaidAmount, custPaidAmount
     );
 
-    out.print("SUCCESS:" + bookingId);
+    String ticketNo = billing.getTicketNo(bookingId);
+    out.print("SUCCESS:" + bookingId + ":" + ticketNo);
 
 } catch (Exception e) {
     e.printStackTrace();

@@ -887,8 +887,11 @@ function submitBooking() {
     .then(data => {
         const d = data.trim();
         if (d.startsWith('SUCCESS:')) {
-            const bookingId = d.split(':')[1];
-            btn.innerHTML = '<i class="fa-solid fa-check"></i> Saved #' + bookingId;
+            const parts = d.split(':');
+            const bookingId = parts[1];
+            const ticketNo  = parts.length > 2 ? parts[2] : '';
+            const label     = ticketNo || ('#' + bookingId);
+            btn.innerHTML = '<i class="fa-solid fa-check"></i> Saved – ' + label;
             btn.style.background = 'var(--green, #059669)';
             btn.style.borderColor = 'var(--green, #059669)';
             const pb = document.getElementById('printBtn');
@@ -896,7 +899,9 @@ function submitBooking() {
             pb.onclick = function() { window.open(ctx + '/ticketbooking/ticketPrint.jsp?id=' + bookingId, '_blank'); };
             Swal.fire({
                 icon: 'success', title: 'Booking Saved!',
-                html: 'Booking ID: <strong>#' + bookingId + '</strong><br><small>Click <b>Print Ticket</b> to print &nbsp;|&nbsp; <b>Clear</b> for new booking</small>',
+                html: (ticketNo ? 'Ticket No: <strong>' + ticketNo + '</strong><br>' : '') +
+                      'Booking ID: <strong>#' + bookingId + '</strong><br>' +
+                      '<small>Click <b>Print Ticket</b> to print &nbsp;|&nbsp; <b>Clear</b> for new booking</small>',
                 confirmButtonText: 'OK', timer: 6000, timerProgressBar: true
             });
         } else {
