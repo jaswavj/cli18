@@ -49,7 +49,7 @@ if (submittedUser != null && submittedPass != null) {
             // Success - Redirect to dashboard
             session.setAttribute("userId", userId);
             session.setAttribute("username", dbUser);
-            response.sendRedirect(request.getContextPath() + "/ticketbooking/ticketDashboard.jsp");
+            response.sendRedirect(request.getContextPath() + "/ticketbooking/app.jsp");
 
             
             return;
@@ -67,6 +67,7 @@ if (submittedUser != null && submittedPass != null) {
 <head>
   <meta charset="UTF-8">
   <title>Login - JASXBILL</title>
+  <link rel="icon" type="image/png" href="<%=request.getContextPath()%>/ticketbooking/jasxbill.jpeg">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
   <link href="dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="dist/fonts/css/all.min.css">

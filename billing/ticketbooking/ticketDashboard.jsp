@@ -64,6 +64,7 @@ chartLabels.append("]"); chartCounts.append("]"); chartSells.append("]");
 <head>
 <meta charset="UTF-8">
 <title>Ticket Dashboard</title>
+<link rel="icon" type="image/png" href="<%= ctx %>/ticketbooking/logo.png">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <%@ include file="/assets/common/head.jsp" %>
 <style>

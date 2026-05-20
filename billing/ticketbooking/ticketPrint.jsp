@@ -484,18 +484,6 @@ body {
     <%}%>
   </div><!-- /pax-txn-grid -->
 
-  <!-- ═══ SIGN SECTION ═══ -->
-  <div class="sign-section">
-    <div class="sign-box">
-      <div class="sign-box-line"></div>
-      <div class="sign-box-lbl">Customer Signature</div>
-    </div>
-    <div class="sign-box">
-      <div class="sign-box-line"></div>
-      <div class="sign-box-lbl">Authorized Signature</div>
-    </div>
-  </div>
-
   <!-- ═══ FOOTER ═══ -->
   <div class="tk-footer">
     <div class="tk-footer-left">Booking #<%=bookingId%>&nbsp;|&nbsp;<%=bookDate%></div>
