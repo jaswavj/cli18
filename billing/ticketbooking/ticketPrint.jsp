@@ -441,20 +441,13 @@ body {
     </div><!-- /pax-col -->
 
     <!-- Right: Transaction + Payment Summary -->
-    <%if (!buyAgent.isEmpty() || !sellAgent.isEmpty() || !custName.isEmpty() || !custAmt.isEmpty() || hasPaySummary) {%>
+    <%if (!sellAgent.isEmpty() || !custName.isEmpty() || !custAmt.isEmpty() || hasPaySummary) {%>
     <div class="txn-col">
       <div class="sec-head">
         <span class="sec-head-icon">&#9881;</span>
         <span class="sec-head-title">Transaction</span>
       </div>
       <table class="txn-table">
-        <%if (!buyAgent.isEmpty()) {%>
-        <tr>
-          <td class="txn-type-cell"><span class="txn-badge buy">Buy</span></td>
-          <td><div class="txn-agent"><%=buyAgent%></div><div class="txn-mode"><%=buyMode.isEmpty()?"":buyMode%></div></td>
-          <td class="txn-amt">&#8377;<%=buyAmt.isEmpty()?"—":buyAmt%></td>
-        </tr>
-        <%}%>
         <%if (!sellAgent.isEmpty()) {%>
         <tr>
           <td class="txn-type-cell"><span class="txn-badge sell">Sell</span></td>
