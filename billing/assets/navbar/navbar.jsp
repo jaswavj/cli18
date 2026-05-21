@@ -180,7 +180,7 @@ for (int i = 0; i < vecPer.size(); i++) {
     </div>
     <% } %>
 
-    <% if (permissions.contains(7)) { %>
+    <% if (permissions.contains(4)) { %>
     <div class="sidebar-dropdown">
       <a href="#" class="sidebar-item" data-bs-toggle="collapse" data-bs-target="#adminReportMenu">
         <i class="fas fa-chart-pie"></i>
