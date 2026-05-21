@@ -1,6 +1,7 @@
 <%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8"%>
 <%@ page import="java.util.*,java.text.SimpleDateFormat"%>
 <jsp:useBean id="billing" class="billing.billingBean" />
+<jsp:useBean id="userB" class="user.userBean" />
 <%
 Integer userId = (Integer) session.getAttribute("userId");
 if (userId == null) {
@@ -20,6 +21,11 @@ try { if (pmFilter != null && !pmFilter.isEmpty()) pmFilterId = Integer.parseInt
 String today = new SimpleDateFormat("yyyy-MM-dd").format(new java.util.Date());
 if (fromDate == null || fromDate.isEmpty()) fromDate = today;
 if (toDate   == null || toDate.isEmpty())   toDate   = today;
+
+Vector compVec = new Vector();
+try { compVec = userB.getCompanyDetails(); } catch (Exception ec) {}
+String printShopName = compVec.size() > 1 && compVec.get(1) != null ? String.valueOf(compVec.get(1)) : "Moulana Air Travels";
+String printAddress  = compVec.size() > 2 && compVec.get(2) != null ? String.valueOf(compVec.get(2)) : "";
 
 Vector payModes = billing.getTicketPaymentModes();
 
@@ -135,14 +141,41 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
 .expand-btn:hover{background:#f0edf8;}
 
 @media print{
-    .tw-nav,.tb-header,.summary-bar .bb-outline-white{display:none!important;}
-    .tw-body{overflow:visible!important;height:auto!important;}
+    .tw-nav,.tb-header{display:none!important;}
     .tw{height:auto!important;overflow:visible!important;}
+    .tw-body{overflow:visible!important;height:auto!important;padding:0!important;}
+    .print-header{display:flex!important;}
+    .summary-bar{box-shadow:none!important;border:1px solid #ccc!important;margin-bottom:8px!important;}
+    .summary-bar .bb-outline-white{display:none!important;}
+    .tbl-wrap{box-shadow:none!important;overflow:visible!important;}
+    .rpt-table{font-size:10px!important;}
+    .rpt-table thead th{padding:5px 6px!important;font-size:9px!important;}
+    .rpt-table td{padding:5px 6px!important;white-space:normal!important;}
+    .detail-row{display:none!important;}
+    .expand-btn{display:none!important;}
+    .badge{padding:1px 4px!important;font-size:9px!important;}
+    a{text-decoration:none!important;}
+    .bb-gold{display:none!important;}
+    .empty-state{display:none!important;}
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 }
 </style>
 </head>
 <body>
 <div class="tw">
+
+  <!-- PRINT-ONLY HEADER -->
+  <div class="print-header" style="display:none;align-items:center;gap:14px;padding:10px 16px;background:linear-gradient(135deg,#1a2744 0%,#243159 100%);border-bottom:3px solid #c9922a;margin-bottom:8px;">
+    <div style="flex:1;">
+      <div style="color:#c9922a;font-size:18px;font-weight:900;letter-spacing:1px;text-transform:uppercase;"><%=printShopName%></div>
+      <%if (!printAddress.isEmpty()){%><div style="color:rgba(255,255,255,.75);font-size:12px;margin-top:2px;"><%=printAddress%></div><%}%>
+    </div>
+    <div style="text-align:right;color:rgba(255,255,255,.7);font-size:11px;">
+      <div style="font-weight:700;color:#fff;">Ticket Report</div>
+      <div><%=fromDate%> &nbsp;to&nbsp; <%=toDate%></div>
+    </div>
+  </div>
+
   <div class="tw-nav"><%@ include file="/assets/navbar/navbar.jsp" %></div>
 
   <!-- HEADER / FILTER -->

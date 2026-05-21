@@ -6541,7 +6541,7 @@ public Vector getTicketReport(String dateType, String fromDate, String toDate, i
             " LEFT JOIN ticket_payment_mode sm ON sm.id = b.sell_payment_mode_id" +
             " LEFT JOIN ticket_payment_mode cm ON cm.id = b.customer_payment_mode_id" +
             " WHERE " + dateCol + " BETWEEN ? AND ?" + modeFilter +
-            " ORDER BY " + dateCol + " DESC";
+            " ORDER BY b.booking_date ASC";
         pt = con.prepareStatement(sql);
         pt.setString(1, fromDate);
         pt.setString(2, toDate);

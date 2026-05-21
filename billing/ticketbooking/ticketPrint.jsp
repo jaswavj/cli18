@@ -495,19 +495,14 @@ body {
 </div><!-- /ticket -->
 
 <script>
-function doPrint() {
-    window.print();
-    // afterprint fires when dialog closes (print or cancel)
-    window.addEventListener('afterprint', function() {
-        window.close();
-    }, { once: true });
-}
-
-// Auto-open print dialog on load
 window.addEventListener('load', function() {
-    if (window.opener || window.history.length <= 1) {
-        setTimeout(doPrint, 400);
-    }
+    setTimeout(function() {
+        window.addEventListener('afterprint', function() {
+            if (window.opener) { window.opener.focus(); }
+            window.close();
+        }, { once: true });
+        window.print();
+    }, 400);
 });
 </script>
 </body>

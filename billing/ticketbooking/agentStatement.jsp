@@ -22,11 +22,14 @@ Vector agents = billing.getTicketAgents();
 
 // Company name (use direct instantiation to avoid duplicate bean with navbar.jsp)
 String companyName = "MOULANA AIR TRAVELS";
+String companyAddress = "";
 try {
     user.userBean uBean = new user.userBean();
     Vector companyInfo = uBean.getCompanyDetails();
     if (companyInfo != null && companyInfo.size() > 1 && companyInfo.get(1) != null)
         companyName = companyInfo.get(1).toString();
+    if (companyInfo != null && companyInfo.size() > 2 && companyInfo.get(2) != null)
+        companyAddress = companyInfo.get(2).toString();
 } catch (Exception e) { /* use default */ }
 
 // Data (only load when agent is selected)
@@ -154,18 +157,33 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
     .tw-nav,.filter-card,.btn-print,.no-print{display:none!important;}
     html,body{height:auto;background:#fff;font-size:11pt;}
     .tw,.tw-body{height:auto;overflow:visible;}
+    .print-header{display:flex!important;}
     .stmt-wrap{box-shadow:none;border-radius:0;}
     .stmt-header{background:#1a2744!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
     .stmt-table thead th{background:#243159!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
     .stmt-table tr.row-total td{background:#1a2744!important;color:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
     .stmt-table td{padding:4px 8px;font-size:10pt;}
     .stmt-table tr:hover td{background:transparent;}
-    @page{size:A4 landscape;margin:10mm 8mm;}
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    @page{size:A4 portrait;margin:10mm 8mm;}
 }
 </style>
 </head>
 <body>
 <div class="tw">
+
+<!-- PRINT-ONLY HEADER -->
+<div class="print-header" style="display:none;align-items:center;gap:14px;padding:10px 16px;background:linear-gradient(135deg,#1a2744 0%,#243159 100%);border-bottom:3px solid #c9922a;margin-bottom:8px;">
+    <div style="flex:1;">
+        <div style="color:#c9922a;font-size:18px;font-weight:900;letter-spacing:1px;text-transform:uppercase;"><%=companyName%></div>
+        <%if (!companyAddress.isEmpty()){%><div style="color:rgba(255,255,255,.75);font-size:12px;margin-top:2px;"><%=companyAddress%></div><%}%>
+    </div>
+    <div style="text-align:right;color:rgba(255,255,255,.7);font-size:11px;">
+        <div style="font-weight:700;color:#fff;">Agent Statement</div>
+        <div><%=fromDisp%> &nbsp;to&nbsp; <%=toDisp%></div>
+    </div>
+</div>
+
 <div class="tw-nav"><%@ include file="/assets/navbar/navbar.jsp" %></div>
 <div class="tw-body">
 
@@ -214,15 +232,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
 <div class="stmt-wrap" id="stmtArea">
 
     <!-- Header -->
-    <div class="stmt-header">
-        <div>
-            <div class="co-name"><%=companyName.toUpperCase()%></div>
-            <div class="ac-name">A/c Name: <%=selectedAgentName.toUpperCase()%></div>
-        </div>
-        <div class="period">
-            Period From : <%=fromDisp%> To <%=toDisp%>
-        </div>
-    </div>
+    
 
     <% // Count TXN rows only (excluding OPEN and TOTAL)
        int txnCount = 0;

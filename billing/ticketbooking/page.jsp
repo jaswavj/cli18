@@ -440,11 +440,11 @@ html,body { height:100%; font-family:'Segoe UI',system-ui,sans-serif; font-size:
               <i class="fa-solid fa-arrow-down-to-bracket"></i>
               Buy from Agent
               <label class="sw toggle-sw" title="Enable if buying from an agent">
-                <input type="checkbox" id="buyToggle" onchange="toggleBuyBlock(this.checked)">
+                <input type="checkbox" id="buyToggle" checked onchange="toggleBuyBlock(this.checked)">
                 <span class="sw-track"></span>
               </label>
             </div>
-            <div class="txn-block-body disabled" id="buyBody">
+            <div class="txn-block-body" id="buyBody">
               <div class="txn-row">
                 <div class="fg" style="flex:1;min-width:130px;">
                   <div class="fg-lbl fg-lbl-dark">Agent</div>
@@ -509,8 +509,8 @@ html,body { height:100%; font-family:'Segoe UI',system-ui,sans-serif; font-size:
               <div id="sellCustSection">
                 <div class="txn-row">
                   <div class="fg" style="flex:1;min-width:140px;">
-                    <div class="fg-lbl fg-lbl-dark">Customer Name</div>
-                    <input id="custName" type="text" class="fg-inp" placeholder="Passenger / Customer name">
+                    <div class="fg-lbl fg-lbl-dark">Referrence name</div>
+                    <input id="custName" type="text" class="fg-inp" placeholder="Referrence name">
                   </div>
                   <div class="fg" style="width:100px;">
                     <div class="fg-lbl fg-lbl-dark">Bill Amount</div>
@@ -758,8 +758,8 @@ function resetForm() {
     document.getElementById('noOfSeats').value = 1;
     document.getElementById('phone').value = '';
     renderPassengers();
-    document.getElementById('buyToggle').checked = false;
-    toggleBuyBlock(false);
+    document.getElementById('buyToggle').checked = true;
+    toggleBuyBlock(true);
     document.getElementById('buyAgent').value = '';
     document.getElementById('buyAmount').value = '';
     document.getElementById('buyPaidAmount').value = '';
@@ -927,7 +927,7 @@ function submitBooking() {
 // ══════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', function() {
     renderPassengers();
-    toggleBuyBlock(false);
+    toggleBuyBlock(true);
     toggleSellBlock(true);
     setSellType('customer');
 });
