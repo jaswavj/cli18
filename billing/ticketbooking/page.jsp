@@ -280,7 +280,7 @@ html,body { height:100%; font-family:'Segoe UI',system-ui,sans-serif; font-size:
 
     <div class="fg">
       <div class="fg-lbl">PNR Number</div>
-      <input id="pnr" type="text" class="fg-inp hdr-inp" placeholder="Enter PNR" style="width:140px;" autocomplete="off">
+      <input id="pnr" type="text" class="fg-inp hdr-inp" placeholder="Enter PNR" style="width:140px;" autocomplete="off" onkeydown="handlePNRKeydown(event)">
     </div>
 
     <div class="fg">
@@ -296,8 +296,22 @@ html,body { height:100%; font-family:'Segoe UI',system-ui,sans-serif; font-size:
     <button class="bb bb-gold" id="saveBtn" onclick="submitBooking()">
       <i class="fa-solid fa-floppy-disk"></i> Save Booking
     </button>
+    <button class="bb" id="cancelBookingBtn" style="display:none;background:#dc2626;color:#fff;border-color:#dc2626;" onclick="cancelBookingAction()">
+      <i class="fa-solid fa-ban"></i> Cancel Booking
+    </button>
     <button class="bb" id="printBtn" style="display:none;background:#059669;color:#fff;border-color:#059669;">
       <i class="fa-solid fa-print"></i> Print Ticket
+    </button>
+  </div>
+
+  <!-- ══ EDIT MODE BANNER ══ -->
+  <div id="editModeBanner" style="display:none;background:linear-gradient(90deg,#4a3d78,#5c4d8a);padding:7px 16px;flex-shrink:0;display:none;align-items:center;gap:12px;box-shadow:0 2px 6px rgba(0,0,0,.2);">
+    <i class="fa-solid fa-pen-to-square" style="color:#ffd700;font-size:14px;"></i>
+    <span style="color:#fff;font-size:12px;font-weight:800;letter-spacing:.4px;">EDIT MODE</span>
+    <span style="color:rgba(255,255,255,.8);font-size:11px;" id="editModeLabel"></span>
+    <div style="flex:1;"></div>
+    <button onclick="exitEditMode()" style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px;border-radius:4px;font-size:11px;font-weight:700;cursor:pointer;background:rgba(255,255,255,.15);color:#fff;border:1.5px solid rgba(255,255,255,.35);">
+      <i class="fa-solid fa-xmark"></i> Exit Edit
     </button>
   </div>
 
@@ -343,11 +357,11 @@ html,body { height:100%; font-family:'Segoe UI',system-ui,sans-serif; font-size:
 
           <div class="fg" style="width:120px;">
             <div class="fg-lbl fg-lbl-dark">Flight No</div>
-            <input id="owFlightNo" type="text" class="fg-inp" placeholder="e.g. AI-202">
+            <input id="owFlightNo" type="text" class="fg-inp flightno-inp" placeholder="e.g. AI-202" autocomplete="off">
           </div>
           <div class="fg" style="flex:1;min-width:130px;">
             <div class="fg-lbl fg-lbl-dark">Airlines</div>
-            <input id="owAirlines" type="text" class="fg-inp" placeholder="e.g. Air India">
+            <input id="owAirlines" type="text" class="fg-inp airline-inp" placeholder="e.g. Air India" autocomplete="off">
           </div>
         </div>
 
@@ -386,11 +400,11 @@ html,body { height:100%; font-family:'Segoe UI',system-ui,sans-serif; font-size:
             </div>
             <div class="fg" style="width:120px;">
               <div class="fg-lbl fg-lbl-dark">Flight No</div>
-              <input id="retFlightNo" type="text" class="fg-inp" placeholder="e.g. AI-203">
+              <input id="retFlightNo" type="text" class="fg-inp flightno-inp" placeholder="e.g. AI-203" autocomplete="off">
             </div>
             <div class="fg" style="flex:1;min-width:130px;">
               <div class="fg-lbl fg-lbl-dark">Airlines</div>
-              <input id="retAirlines" type="text" class="fg-inp" placeholder="e.g. Air India">
+              <input id="retAirlines" type="text" class="fg-inp airline-inp" placeholder="e.g. Air India" autocomplete="off">
             </div>
           </div>
         </div>
@@ -472,12 +486,16 @@ html,body { height:100%; font-family:'Segoe UI',system-ui,sans-serif; font-size:
                 </div>
                 <div class="fg" style="flex:1;min-width:120px;">
                   <div class="fg-lbl fg-lbl-dark">Payment Mode</div>
-                  <select id="buyMode" class="fg-sel">
+                  <select id="buyMode" class="fg-sel" onchange="handleModeChange('buyMode','buyTxnRow','buyTxnNo')">
                     <option value="">— Mode —</option>
                     <%for (int i = 0; i < payModes.size(); i++) { Vector pm = (Vector)payModes.elementAt(i);%>
-                    <option value="<%=pm.get(0)%>"><%=pm.get(1)%></option>
+                    <option value="<%=pm.get(0)%>" data-cash="<%=pm.get(1).toString().toLowerCase().contains("cash") ? "1" : "0"%>"><%=pm.get(1)%></option>
                     <%}%>
                   </select>
+                </div>
+                <div class="fg" id="buyTxnRow" style="display:none;min-width:140px;">
+                  <div class="fg-lbl fg-lbl-dark">Transaction No</div>
+                  <input id="buyTxnNo" type="text" class="fg-inp" placeholder="Txn / Ref No">
                 </div>
               </div>
             </div>
@@ -526,12 +544,16 @@ html,body { height:100%; font-family:'Segoe UI',system-ui,sans-serif; font-size:
                   </div>
                   <div class="fg" style="flex:1;min-width:120px;">
                     <div class="fg-lbl fg-lbl-dark">Payment Mode</div>
-                    <select id="custMode" class="fg-sel">
+                    <select id="custMode" class="fg-sel" onchange="handleModeChange('custMode','custTxnRow','custTxnNo')">
                       <option value="">— Mode —</option>
                       <%for (int i = 0; i < payModes.size(); i++) { Vector pm = (Vector)payModes.elementAt(i);%>
-                      <option value="<%=pm.get(0)%>"><%=pm.get(1)%></option>
+                      <option value="<%=pm.get(0)%>" data-cash="<%=pm.get(1).toString().toLowerCase().contains("cash") ? "1" : "0"%>"><%=pm.get(1)%></option>
                       <%}%>
                     </select>
+                  </div>
+                  <div class="fg" id="custTxnRow" style="display:none;min-width:140px;">
+                    <div class="fg-lbl fg-lbl-dark">Transaction No</div>
+                    <input id="custTxnNo" type="text" class="fg-inp" placeholder="Txn / Ref No">
                   </div>
                 </div>
               </div>
@@ -562,12 +584,16 @@ html,body { height:100%; font-family:'Segoe UI',system-ui,sans-serif; font-size:
                   </div>
                   <div class="fg" style="flex:1;min-width:120px;">
                     <div class="fg-lbl fg-lbl-dark">Payment Mode</div>
-                    <select id="sellMode" class="fg-sel">
+                    <select id="sellMode" class="fg-sel" onchange="handleModeChange('sellMode','sellTxnRow','sellTxnNo')">
                       <option value="">— Mode —</option>
                       <%for (int i = 0; i < payModes.size(); i++) { Vector pm = (Vector)payModes.elementAt(i);%>
-                      <option value="<%=pm.get(0)%>"><%=pm.get(1)%></option>
+                      <option value="<%=pm.get(0)%>" data-cash="<%=pm.get(1).toString().toLowerCase().contains("cash") ? "1" : "0"%>"><%=pm.get(1)%></option>
                       <%}%>
                     </select>
+                  </div>
+                  <div class="fg" id="sellTxnRow" style="display:none;min-width:140px;">
+                    <div class="fg-lbl fg-lbl-dark">Transaction No</div>
+                    <input id="sellTxnNo" type="text" class="fg-inp" placeholder="Txn / Ref No">
                   </div>
                 </div>
               </div>
@@ -641,8 +667,72 @@ function initCityAC(inp) {
     });
 }
 
+// ══════════════════════════════════════════
+//  Flight No Autocomplete
+// ══════════════════════════════════════════
+function initFlightNoAC(inp) {
+    const $inp = $(inp);
+    $inp.autocomplete({
+        minLength: 1,
+        delay: 200,
+        source: function(req, resp) {
+            $.getJSON(ctx + '/ticketbooking/getFlightNos.jsp', { term: req.term }, function(data) {
+                const lower = req.term.trim().toLowerCase();
+                const exact = data.find(d => d.label.toLowerCase() === lower);
+                if (!exact && req.term.trim().length > 0) {
+                    data.push({ id: 0, label: '+ Add "' + req.term.trim() + '"', value: req.term.trim(), isNew: true });
+                }
+                resp(data);
+            });
+        },
+        select: function(e, ui) { inp.value = ui.item.value; return false; },
+        focus: function(e, ui) { inp.value = ui.item.value; return false; }
+    }).autocomplete('instance')._renderItem = function(ul, item) {
+        return $('<li>').append(
+            $('<div>').addClass('ui-menu-item-wrapper').html(
+                item.isNew
+                    ? '<i class="fa-solid fa-plus" style="color:var(--green);margin-right:6px;"></i><strong style="color:var(--green);">' + item.label + '</strong>'
+                    : '<i class="fa-solid fa-plane" style="color:var(--violet);margin-right:6px;"></i>' + item.label
+            )
+        ).appendTo(ul);
+    };
+}
+
+// ══════════════════════════════════════════
+//  Airline Autocomplete
+// ══════════════════════════════════════════
+function initAirlineAC(inp) {
+    const $inp = $(inp);
+    $inp.autocomplete({
+        minLength: 1,
+        delay: 200,
+        source: function(req, resp) {
+            $.getJSON(ctx + '/ticketbooking/getAirlines.jsp', { term: req.term }, function(data) {
+                const lower = req.term.trim().toLowerCase();
+                const exact = data.find(d => d.label.toLowerCase() === lower);
+                if (!exact && req.term.trim().length > 0) {
+                    data.push({ id: 0, label: '+ Add "' + req.term.trim() + '"', value: req.term.trim(), isNew: true });
+                }
+                resp(data);
+            });
+        },
+        select: function(e, ui) { inp.value = ui.item.value; return false; },
+        focus: function(e, ui) { inp.value = ui.item.value; return false; }
+    }).autocomplete('instance')._renderItem = function(ul, item) {
+        return $('<li>').append(
+            $('<div>').addClass('ui-menu-item-wrapper').html(
+                item.isNew
+                    ? '<i class="fa-solid fa-plus" style="color:var(--green);margin-right:6px;"></i><strong style="color:var(--green);">' + item.label + '</strong>'
+                    : '<i class="fa-solid fa-jet-fighter-up" style="color:var(--violet);margin-right:6px;"></i>' + item.label
+            )
+        ).appendTo(ul);
+    };
+}
+
 $(function() {
     document.querySelectorAll('.city-inp').forEach(initCityAC);
+    document.querySelectorAll('.flightno-inp').forEach(initFlightNoAC);
+    document.querySelectorAll('.airline-inp').forEach(initAirlineAC);
 });
 
 // ══════════════════════════════════════════
@@ -652,7 +742,8 @@ $(function() {
 function syncPaid(pfx) {
     const bill = parseFloat(document.getElementById(pfx + 'Amount')?.value) || 0;
     const paidEl = document.getElementById(pfx + 'PaidAmount');
-    if (paidEl && !paidEl._touched) paidEl.value = bill > 0 ? bill.toFixed(2) : '';
+    // In edit mode paid fields are readOnly – never overwrite them
+    if (paidEl && !paidEl._touched && !paidEl.readOnly) paidEl.value = bill > 0 ? bill.toFixed(2) : '';
 }
 // Mark paid field as manually touched so syncPaid won't override it
 document.addEventListener('DOMContentLoaded', function() {
@@ -733,8 +824,269 @@ function setSellType(type) {
 // ══════════════════════════════════════════
 //  Reset
 // ══════════════════════════════════════════
+// ══════════════════════════════════════════
+//  Edit Mode state
+// ══════════════════════════════════════════
+let editBookingId = null;
+
+function handlePNRKeydown(e) {
+    if (e.key === 'Enter') {
+        const pnr = document.getElementById('pnr').value.trim();
+        if (pnr) fetchPNRForEdit(pnr);
+    }
+}
+
+function fetchPNRForEdit(pnr) {
+    const params = new URLSearchParams();
+    params.set('pnr', pnr);
+    fetch(ctx + '/ticketbooking/getPNRForEdit.jsp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString()
+    })
+    .then(r => r.text())
+    .then(raw => {
+        const d = raw.trim();
+        if (d === 'NO_PERM') {
+            Swal.fire('Access Denied', 'You do not have permission to edit bookings (Permission 6 required).', 'error'); return;
+        }
+        if (d === 'NOT_FOUND') {
+            Swal.fire('Not Found', 'No booking found with PNR: ' + pnr, 'warning'); return;
+        }
+        if (d.startsWith('ERROR:')) {
+            Swal.fire('Error', d.substring(6), 'error'); return;
+        }
+        try {
+            const data = JSON.parse(d);
+            if (data.isCancelled === '1') {
+                Swal.fire('Cancelled', 'This booking has already been cancelled.', 'warning'); return;
+            }
+            populateEditForm(data);
+        } catch(ex) {
+            Swal.fire('Error', 'Failed to parse response: ' + ex.message, 'error');
+        }
+    })
+    .catch(err => Swal.fire('Error', err.message, 'error'));
+}
+
+function populateEditForm(d) {
+    editBookingId = d.id;
+
+    // Header fields
+    document.getElementById('pnr').value = d.pnr || '';
+    if (d.bookingDate) document.getElementById('bookingDate').value = d.bookingDate;
+
+    // Journey
+    if (d.owDate)  document.getElementById('owDate').value  = d.owDate;
+    if (d.owTime)  document.getElementById('owTime').value  = d.owTime;
+    document.getElementById('owFrom').value    = d.owFromName || '';
+    document.getElementById('owTo').value      = d.owToName   || '';
+    document.getElementById('owFlightNo').value = d.owFlightNo  || '';
+    document.getElementById('owAirlines').value = d.owAirlines  || '';
+
+    const hasRet = d.retDate && d.retDate.length > 0;
+    document.getElementById('retToggle').checked = hasRet;
+    toggleReturn(hasRet);
+    if (hasRet) {
+        document.getElementById('retDate').value     = d.retDate     || '';
+        document.getElementById('retTime').value     = d.retTime     || '';
+        document.getElementById('retFrom').value     = d.retFromName || '';
+        document.getElementById('retTo').value       = d.retToName   || '';
+        document.getElementById('retFlightNo').value = d.retFlightNo || '';
+        document.getElementById('retAirlines').value = d.retAirlines || '';
+    }
+
+    // Seats / Phone
+    const seats = parseInt(d.seats) || 1;
+    document.getElementById('noOfSeats').value = seats;
+    renderPassengers();
+    document.getElementById('phone').value = d.phone || '';
+
+    // Passengers
+    if (d.passengers && d.passengers.length > 0) {
+        setTimeout(() => {
+            d.passengers.forEach((name, idx) => {
+                const el = document.getElementById('pax_' + (idx + 1));
+                if (el) el.value = name;
+            });
+        }, 50);
+    }
+
+    // Buy from agent
+    if (d.buyAgentId && d.buyAgentId !== '') {
+        document.getElementById('buyToggle').checked = true;
+        toggleBuyBlock(true);
+        document.getElementById('buyAgent').value  = d.buyAgentId;
+        document.getElementById('buyAmount').value = d.buyAmount  || '';
+        document.getElementById('buyMode').value   = d.buyModeId  || '';
+        handleModeChange('buyMode', 'buyTxnRow', 'buyTxnNo');
+        if (d.buyTxnNo) document.getElementById('buyTxnNo').value = d.buyTxnNo;
+        const buyPaidEl = document.getElementById('buyPaidAmount');
+        buyPaidEl.value = d.buyPaid || '0';
+        buyPaidEl._touched = true;
+        buyPaidEl.readOnly = true;
+        buyPaidEl.style.background = '#e9ecef';
+        calcBal('buy');
+    } else {
+        document.getElementById('buyToggle').checked = false;
+        toggleBuyBlock(false);
+    }
+
+    // Sell
+    if (d.sellAgentId && d.sellAgentId !== '') {
+        document.getElementById('sellToggle').checked = true;
+        toggleSellBlock(true);
+        setSellType('agent');
+        document.getElementById('sellAgent').value  = d.sellAgentId;
+        document.getElementById('sellAmount').value = d.sellAmount  || '';
+        document.getElementById('sellMode').value   = d.sellModeId  || '';
+        handleModeChange('sellMode', 'sellTxnRow', 'sellTxnNo');
+        if (d.sellTxnNo) document.getElementById('sellTxnNo').value = d.sellTxnNo;
+        const sellPaidEl = document.getElementById('sellPaidAmount');
+        sellPaidEl.value = d.sellPaid || '0';
+        sellPaidEl._touched = true;
+        sellPaidEl.readOnly = true;
+        sellPaidEl.style.background = '#e9ecef';
+        calcBal('sell');
+    } else if (d.custAmount && d.custAmount !== '') {
+        document.getElementById('sellToggle').checked = true;
+        toggleSellBlock(true);
+        setSellType('customer');
+        document.getElementById('custName').value   = d.custName   || '';
+        document.getElementById('custAmount').value = d.custAmount || '';
+        document.getElementById('custMode').value   = d.custModeId || '';
+        handleModeChange('custMode', 'custTxnRow', 'custTxnNo');
+        if (d.custTxnNo) document.getElementById('custTxnNo').value = d.custTxnNo;
+        const custPaidEl = document.getElementById('custPaidAmount');
+        custPaidEl.value = d.custPaid || '0';
+        custPaidEl._touched = true;
+        custPaidEl.readOnly = true;
+        custPaidEl.style.background = '#e9ecef';
+        calcBal('cust');
+    } else {
+        document.getElementById('sellToggle').checked = false;
+        toggleSellBlock(false);
+    }
+
+    // Edit mode banner
+    const label = (d.ticketNo || ('#' + d.id)) + '  ·  PNR: ' + d.pnr;
+    document.getElementById('editModeLabel').textContent = label;
+    const banner = document.getElementById('editModeBanner');
+    banner.style.display = 'flex';
+
+    // Buttons
+    const sb = document.getElementById('saveBtn');
+    sb.disabled = false;
+    sb.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Update Booking';
+    sb.style.background = 'var(--violet)';
+    sb.style.borderColor = 'var(--violet)';
+    document.getElementById('cancelBookingBtn').style.display = 'inline-flex';
+    document.getElementById('printBtn').style.display = 'none';
+
+    // Scroll to top of body
+    const body = document.querySelector('.tw-body');
+    if (body) body.scrollTop = 0;
+}
+
+function setEditMode(on) {
+    document.getElementById('editModeBanner').style.display = on ? 'flex' : 'none';
+    document.getElementById('cancelBookingBtn').style.display = on ? 'inline-flex' : 'none';
+    if (!on) {
+        editBookingId = null;
+        const sb = document.getElementById('saveBtn');
+        sb.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save Booking';
+        sb.style.background = '';
+        sb.style.borderColor = '';
+        // Restore paid fields
+        ['buyPaidAmount','sellPaidAmount','custPaidAmount'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) { el.readOnly = false; el.style.background = ''; }
+        });
+    }
+}
+
+function exitEditMode() {
+    if (!confirm('Exit edit mode? Unsaved changes will be lost.')) return;
+    setEditMode(false);
+    const sb = document.getElementById('saveBtn');
+    sb.disabled = false;
+    sb.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save Booking';
+    sb.style.background = '';
+    sb.style.borderColor = '';
+    // clear the form manually without the confirm prompt
+    document.getElementById('pnr').value = '';
+    ['owDate','owTime','owFrom','owFromId','owTo','owToId','owFlightNo','owAirlines',
+     'retDate','retTime','retFrom','retFromId','retTo','retToId','retFlightNo','retAirlines'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.value = '';
+    });
+    document.getElementById('retToggle').checked = false;
+    toggleReturn(false);
+    document.getElementById('noOfSeats').value = 1;
+    document.getElementById('phone').value = '';
+    renderPassengers();
+    document.getElementById('buyToggle').checked = true;
+    toggleBuyBlock(true);
+    ['buyAgent','buyAmount','buyMode','buyTxnNo','buyPaidAmount','custName','custAmount','custMode','custTxnNo','custPaidAmount','sellAgent','sellAmount','sellMode','sellTxnNo','sellPaidAmount'].forEach(id => {
+        const el = document.getElementById(id); if (el) { el.value = ''; el.readOnly = false; el.style.background = ''; }
+    });
+    ['buyTxnRow','custTxnRow','sellTxnRow'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.style.display = 'none';
+    });
+    ['buyBalDisp','custBalDisp','sellBalDisp'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.textContent = '\u20b90.00'; el.className = 'bal-amt bal-zero'; }
+    });
+    document.getElementById('sellToggle').checked = true;
+    toggleSellBlock(true);
+    setSellType('customer');
+    document.getElementById('printBtn').style.display = 'none';
+}
+
+function cancelBookingAction() {
+    if (!editBookingId) return;
+    Swal.fire({
+        title: 'Cancel Booking?',
+        html: '<p style="margin-bottom:10px;">This action cannot be undone. Enter a reason:</p>' +
+              '<textarea id="cancelReason" rows="3" style="width:100%;border:1px solid #ccc;border-radius:4px;padding:8px;font-size:13px;" placeholder="Reason for cancellation..."></textarea>',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: '<i class="fa-solid fa-ban"></i> Yes, Cancel Booking',
+        cancelButtonText: 'No, Keep It',
+        confirmButtonColor: '#dc2626',
+        preConfirm: () => {
+            const reason = document.getElementById('cancelReason').value.trim();
+            if (!reason) { Swal.showValidationMessage('Please enter a reason for cancellation.'); return false; }
+            return reason;
+        }
+    }).then(result => {
+        if (!result.isConfirmed) return;
+        const reason = result.value;
+        const params = new URLSearchParams();
+        params.set('bookingId', editBookingId);
+        params.set('reason', reason);
+        fetch(ctx + '/ticketbooking/cancelBooking.jsp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: params.toString()
+        })
+        .then(r => r.text())
+        .then(raw => {
+            const d = raw.trim();
+            if (d === 'SUCCESS') {
+                Swal.fire('Cancelled!', 'Booking has been cancelled and logged.', 'success');
+                exitEditMode();
+            } else {
+                const msg = d.startsWith('ERROR:') ? d.substring(6) : d;
+                Swal.fire('Error', msg, 'error');
+            }
+        })
+        .catch(err => Swal.fire('Error', err.message, 'error'));
+    });
+}
+
 function resetForm() {
     if (!confirm('Clear all fields?')) return;
+    if (editBookingId) setEditMode(false);
     const sb = document.getElementById('saveBtn');
     sb.disabled = false;
     sb.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save Booking';
@@ -767,6 +1119,8 @@ function resetForm() {
     document.getElementById('buyBalDisp').textContent = '₹0.00';
     document.getElementById('buyBalDisp').className = 'bal-amt bal-zero';
     document.getElementById('buyMode').value = '';
+    document.getElementById('buyTxnRow').style.display = 'none';
+    document.getElementById('buyTxnNo').value = '';
     document.getElementById('sellToggle').checked = true;
     toggleSellBlock(true);
     setSellType('customer');
@@ -777,6 +1131,8 @@ function resetForm() {
     document.getElementById('custBalDisp').textContent = '₹0.00';
     document.getElementById('custBalDisp').className = 'bal-amt bal-zero';
     document.getElementById('custMode').value = '';
+    document.getElementById('custTxnRow').style.display = 'none';
+    document.getElementById('custTxnNo').value = '';
     document.getElementById('sellAgent').value = '';
     document.getElementById('sellAmount').value = '';
     document.getElementById('sellPaidAmount').value = '';
@@ -784,6 +1140,26 @@ function resetForm() {
     document.getElementById('sellBalDisp').textContent = '₹0.00';
     document.getElementById('sellBalDisp').className = 'bal-amt bal-zero';
     document.getElementById('sellMode').value = '';
+    document.getElementById('sellTxnRow').style.display = 'none';
+    document.getElementById('sellTxnNo').value = '';
+}
+
+// ══════════════════════════════════════════
+//  Online Payment Mode Detection
+// ══════════════════════════════════════════
+function handleModeChange(selId, rowId, inpId) {
+    const sel = document.getElementById(selId);
+    const opt = sel.options[sel.selectedIndex];
+    const isOnline = sel.value && opt.getAttribute('data-cash') === '0';
+    const row = document.getElementById(rowId);
+    row.style.display = isOnline ? '' : 'none';
+    if (!isOnline) document.getElementById(inpId).value = '';
+}
+function isModeOnline(selId) {
+    const sel = document.getElementById(selId);
+    if (!sel || !sel.value) return false;
+    const opt = sel.options[sel.selectedIndex];
+    return opt && opt.getAttribute('data-cash') === '0';
 }
 
 // ══════════════════════════════════════════
@@ -806,21 +1182,47 @@ function submitBooking() {
     const buyOn     = document.getElementById('buyToggle').checked;
     const sellOn    = document.getElementById('sellToggle').checked;
     const sellType  = document.querySelector('input[name="sellType"]:checked')?.value || 'customer';
+    const parseAmt = (v) => {
+      const n = parseFloat(v);
+      return isNaN(n) ? 0 : n;
+    };
+
+    const buyPaidVal  = document.getElementById('buyPaidAmount')?.value;
+    const sellPaidVal = document.getElementById('sellPaidAmount')?.value;
+    const custPaidVal = document.getElementById('custPaidAmount')?.value;
+
+    const buyPaid  = parseAmt(buyPaidVal);
+    const sellPaid = parseAmt(sellPaidVal);
+    const custPaid = parseAmt(custPaidVal);
 
     // Payment mode validation
-    if (buyOn && !document.getElementById('buyMode').value) {
+    if (buyOn && buyPaid > 0 && !document.getElementById('buyMode').value) {
         Swal.fire('Error','Please select a Payment Mode for Buy from Agent','error');
         document.getElementById('buyMode').focus(); return;
     }
     if (sellOn) {
-        if (sellType === 'customer' && !document.getElementById('custMode').value) {
+      if (sellType === 'customer' && custPaid > 0 && !document.getElementById('custMode').value) {
             Swal.fire('Error','Please select a Payment Mode for Customer','error');
             document.getElementById('custMode').focus(); return;
         }
-        if (sellType === 'agent' && !document.getElementById('sellMode').value) {
+      if (sellType === 'agent' && sellPaid > 0 && !document.getElementById('sellMode').value) {
             Swal.fire('Error','Please select a Payment Mode for Sell to Agent','error');
             document.getElementById('sellMode').focus(); return;
         }
+    }
+
+    // Transaction number validation for online payment modes
+    if (buyOn && buyPaid > 0 && isModeOnline('buyMode') && !document.getElementById('buyTxnNo').value.trim()) {
+        Swal.fire('Error','Please enter Transaction No for Buy from Agent (online payment)','error');
+        document.getElementById('buyTxnNo').focus(); return;
+    }
+    if (sellOn && sellType === 'customer' && custPaid > 0 && isModeOnline('custMode') && !document.getElementById('custTxnNo').value.trim()) {
+        Swal.fire('Error','Please enter Transaction No for Customer (online payment)','error');
+        document.getElementById('custTxnNo').focus(); return;
+    }
+    if (sellOn && sellType === 'agent' && sellPaid > 0 && isModeOnline('sellMode') && !document.getElementById('sellTxnNo').value.trim()) {
+        Swal.fire('Error','Please enter Transaction No for Sell to Agent (online payment)','error');
+        document.getElementById('sellTxnNo').focus(); return;
     }
 
     const params = new URLSearchParams();
@@ -855,8 +1257,9 @@ function submitBooking() {
     if (buyOn) {
         params.set('buyAgentId',    document.getElementById('buyAgent').value);
         params.set('buyAmount',     document.getElementById('buyAmount').value);
-        params.set('buyModeId',     document.getElementById('buyMode').value);
-        params.set('buyPaidAmount', document.getElementById('buyPaidAmount').value || document.getElementById('buyAmount').value);
+      params.set('buyModeId',     buyPaid > 0 ? document.getElementById('buyMode').value : '');
+      params.set('buyPaidAmount', buyPaid > 0 ? String(buyPaid) : '0');
+      params.set('buyTxnNo',      buyPaid > 0 ? document.getElementById('buyTxnNo').value.trim() : '');
     }
 
     // Sell
@@ -864,13 +1267,15 @@ function submitBooking() {
         if (sellType === 'customer') {
             params.set('customerName',   document.getElementById('custName').value.trim());
             params.set('custAmount',     document.getElementById('custAmount').value);
-            params.set('custModeId',     document.getElementById('custMode').value);
-            params.set('custPaidAmount', document.getElementById('custPaidAmount').value || document.getElementById('custAmount').value);
+        params.set('custModeId',     custPaid > 0 ? document.getElementById('custMode').value : '');
+        params.set('custPaidAmount', custPaid > 0 ? String(custPaid) : '0');
+        params.set('custTxnNo',      custPaid > 0 ? document.getElementById('custTxnNo').value.trim() : '');
         } else {
             params.set('sellAgentId',    document.getElementById('sellAgent').value);
             params.set('sellAmount',     document.getElementById('sellAmount').value);
-            params.set('sellModeId',     document.getElementById('sellMode').value);
-            params.set('sellPaidAmount', document.getElementById('sellPaidAmount').value || document.getElementById('sellAmount').value);
+        params.set('sellModeId',     sellPaid > 0 ? document.getElementById('sellMode').value : '');
+        params.set('sellPaidAmount', sellPaid > 0 ? String(sellPaid) : '0');
+        params.set('sellTxnNo',      sellPaid > 0 ? document.getElementById('sellTxnNo').value.trim() : '');
         }
     }
 
@@ -878,7 +1283,28 @@ function submitBooking() {
     btn.disabled = true;
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
 
-    fetch(ctx + '/ticketbooking/save.jsp', {
+    Swal.fire({
+        title: 'Save Booking?',
+        text: 'Are you sure you want to save this ticket booking?',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: '<i class="fa-solid fa-floppy-disk"></i> Yes, Save',
+        cancelButtonText: 'Cancel',
+        confirmButtonColor: '#2563eb'
+    }).then(result => {
+        if (!result.isConfirmed) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save Booking';
+            return;
+        }
+
+    const isEditMode = editBookingId != null;
+    const saveUrl = isEditMode
+        ? ctx + '/ticketbooking/updateBooking.jsp'
+        : ctx + '/ticketbooking/save.jsp';
+    if (isEditMode) params.set('bookingId', editBookingId);
+
+    fetch(saveUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: params.toString()
@@ -886,40 +1312,63 @@ function submitBooking() {
     .then(r => r.text())
     .then(data => {
         const d = data.trim();
-        if (d.startsWith('SUCCESS:')) {
-            const parts = d.split(':');
-            const bookingId = parts[1];
-            const ticketNo  = parts.length > 2 ? parts[2] : '';
-            const label     = ticketNo || ('#' + bookingId);
-            btn.innerHTML = '<i class="fa-solid fa-check"></i> Saved – ' + label;
-            btn.style.background = 'var(--green, #059669)';
-            btn.style.borderColor = 'var(--green, #059669)';
-            const pb = document.getElementById('printBtn');
-            pb.style.display = 'inline-flex';
-            pb.onclick = function() { window.open(ctx + '/ticketbooking/ticketPrint.jsp?id=' + bookingId, '_blank'); };
-            Swal.fire({
-                icon: 'success', title: 'Booking Saved!',
-                html: (ticketNo ? 'Ticket No: <strong>' + ticketNo + '</strong><br>' : '') +
-                      'Booking ID: <strong>#' + bookingId + '</strong><br>' +
-                      '<small>Click <b>Print Ticket</b> to print &nbsp;|&nbsp; <b>Clear</b> for new booking</small>',
-                confirmButtonText: 'OK', timer: 6000, timerProgressBar: true
-            });
+        if (isEditMode) {
+            // Update mode
+            if (d === 'SUCCESS') {
+                btn.innerHTML = '<i class="fa-solid fa-check"></i> Updated!';
+                btn.style.background = 'var(--green, #059669)';
+                btn.style.borderColor = 'var(--green, #059669)';
+                Swal.fire({
+                    icon: 'success', title: 'Booking Updated!',
+                    text: 'Changes have been saved and logged.',
+                    confirmButtonText: 'OK', timer: 4000, timerProgressBar: true
+                }).then(() => { exitEditMode(); });
+            } else {
+                const msg = d.startsWith('ERROR:') ? d.substring(6) : d;
+                Swal.fire('Error', msg, 'error');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Update Booking';
+                btn.style.background = 'var(--violet)';
+                btn.style.borderColor = 'var(--violet)';
+            }
         } else {
-            const msg = d.startsWith('ERROR:') ? d.substring(6) : d;
-            Swal.fire('Error', msg, 'error');
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save Booking';
-            btn.style.background = '';
-            btn.style.borderColor = '';
+            // New save mode
+            if (d.startsWith('SUCCESS:')) {
+                const parts = d.split(':');
+                const bookingId = parts[1];
+                const ticketNo  = parts.length > 2 ? parts[2] : '';
+                const label     = ticketNo || ('#' + bookingId);
+                btn.innerHTML = '<i class="fa-solid fa-check"></i> Saved – ' + label;
+                btn.style.background = 'var(--green, #059669)';
+                btn.style.borderColor = 'var(--green, #059669)';
+                const pb = document.getElementById('printBtn');
+                pb.style.display = 'inline-flex';
+                pb.onclick = function() { window.open(ctx + '/ticketbooking/ticketPrint.jsp?id=' + bookingId, '_blank'); };
+                Swal.fire({
+                    icon: 'success', title: 'Booking Saved!',
+                    html: (ticketNo ? 'Ticket No: <strong>' + ticketNo + '</strong><br>' : '') +
+                          'Booking ID: <strong>#' + bookingId + '</strong><br>' +
+                          '<small>Click <b>Print Ticket</b> to print &nbsp;|&nbsp; <b>Clear</b> for new booking</small>',
+                    confirmButtonText: 'OK', timer: 6000, timerProgressBar: true
+                });
+            } else {
+                const msg = d.startsWith('ERROR:') ? d.substring(6) : d;
+                Swal.fire('Error', msg, 'error');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save Booking';
+                btn.style.background = '';
+                btn.style.borderColor = '';
+            }
         }
     })
     .catch(err => {
         Swal.fire('Error', err.message, 'error');
         btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save Booking';
-        btn.style.background = '';
-        btn.style.borderColor = '';
+        btn.innerHTML = isEditMode ? '<i class="fa-solid fa-floppy-disk"></i> Update Booking' : '<i class="fa-solid fa-floppy-disk"></i> Save Booking';
+        btn.style.background = isEditMode ? 'var(--violet)' : '';
+        btn.style.borderColor = isEditMode ? 'var(--violet)' : '';
     });
+    }); // end Swal confirm
 }
 
 // ══════════════════════════════════════════

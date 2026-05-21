@@ -1,6 +1,7 @@
 <%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8"%>
 <%@ page import="java.util.*,java.text.SimpleDateFormat,java.text.DecimalFormat"%>
 <jsp:useBean id="billing" class="billing.billingBean" />
+<jsp:useBean id="userB" class="user.userBean" />
 <%
 Integer userId = (Integer) session.getAttribute("userId");
 if (userId == null) {
@@ -18,27 +19,42 @@ if (toDate   == null || toDate.isEmpty())   toDate   = today;
 int agentFilterId = 0;
 try { if (agentIdP != null && !agentIdP.isEmpty()) agentFilterId = Integer.parseInt(agentIdP); } catch (Exception e) {}
 
-Vector agents  = billing.getTicketAgents();
-Vector payModes= billing.getTicketPaymentModes();
-Vector rows    = billing.getTicketLedgerReport(fromDate, toDate, agentFilterId);
+Vector agents   = billing.getTicketAgents();
+Vector payModes = billing.getTicketPaymentModes();
+Vector rows     = billing.getTicketPaymentsDetail(fromDate, toDate, agentFilterId, "BUY");
 
 DecimalFormat df = new DecimalFormat("0.00");
 
-// Totals
+// Pre-pass: build per-booking+party balance map
+java.util.Map<String, double[]> balMap = new java.util.LinkedHashMap<>();
+java.util.Map<String, Integer>  lastRowIdx = new java.util.LinkedHashMap<>();
 double totalBill = 0, totalPaid = 0, totalBal = 0;
 for (int i = 0; i < rows.size(); i++) {
     Vector r = (Vector) rows.get(i);
-    double bill = r.get(6) != null ? Double.parseDouble(r.get(6).toString()) : 0;
-    double paid = r.get(7) != null ? Double.parseDouble(r.get(7).toString()) : 0;
-    double bal  = r.get(8) != null ? Double.parseDouble(r.get(8).toString()) : 0;
-    totalBill += bill; totalPaid += paid; totalBal += bal;
+    int bId = r.get(1) != null ? Integer.parseInt(r.get(1).toString()) : 0;
+    String pt = r.get(4) != null ? r.get(4).toString() : "";
+    String key = bId + "|" + pt;
+    double bill = r.get(7) != null ? Double.parseDouble(r.get(7).toString()) : 0;
+    double paid = r.get(8) != null ? Double.parseDouble(r.get(8).toString()) : 0;
+    totalBill += bill; totalPaid += paid;
+    double[] vals = (double[]) balMap.get(key);
+    if (vals == null) { vals = new double[]{bId, 0, 0}; balMap.put(key, vals); }
+    vals[1] += bill; vals[2] += paid;
+    lastRowIdx.put(key, i);
 }
+totalBal = totalBill - totalPaid;
+
+// Print shop name
+Vector compVec = new Vector();
+try { compVec = userB.getCompanyDetails(); } catch (Exception ec) {}
+String printShopName = compVec.size() > 1 && compVec.get(1) != null ? String.valueOf(compVec.get(1)) : "Moulana Air Travels";
+String printAddress  = compVec.size() > 2 && compVec.get(2) != null ? String.valueOf(compVec.get(2)) : "";
 %>
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Ticket Ledger</title>
+<title>Agent Paid Report</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <%@ include file="/assets/common/head.jsp" %>
 <style>
@@ -63,8 +79,6 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
 .rpt-title i{color:var(--gold);font-size:17px;}
 .hdr-divider{width:1px;height:28px;background:rgba(255,255,255,.2);flex-shrink:0;}
 .hdr-spacer{flex:1;}
-
-/* Field / Button (reuse) */
 .fg{display:flex;flex-direction:column;gap:3px;min-width:0;}
 .fg-lbl{font-size:10px;font-weight:700;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;}
 .fg-inp,.fg-sel{height:33px;border:1.5px solid rgba(255,255,255,.25);border-radius:var(--r-sm);padding:0 9px;background:rgba(255,255,255,.12);color:#fff;font-size:13px;outline:none;}
@@ -74,15 +88,17 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
 .bb{display:inline-flex;align-items:center;gap:6px;height:33px;padding:0 15px;border-radius:var(--r-sm);font-size:12px;font-weight:700;cursor:pointer;border:1.5px solid transparent;transition:all .15s;white-space:nowrap;}
 .bb-gold{background:var(--gold);color:#fff;border-color:var(--gold);}
 .bb-gold:hover{background:var(--gold-d);}
+.bb-outline-white{background:transparent;color:#fff;border-color:rgba(255,255,255,.5);}
+.bb-outline-white:hover{background:rgba(255,255,255,.12);}
+
+/* Print header */
+.print-header{display:none;}
 
 /* Summary chips */
 .sum-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;}
 .sum-chip{background:var(--card);border-radius:var(--r-sm);border:1px solid var(--border-l);padding:10px 16px;display:flex;flex-direction:column;gap:3px;min-width:120px;box-shadow:var(--shadow-sm);}
 .sum-chip-lbl{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;}
 .sum-chip-val{font-size:18px;font-weight:800;}
-.sum-chip.chip-bill .sum-chip-val{color:var(--navy);}
-.sum-chip.chip-paid .sum-chip-val{color:var(--green);}
-.sum-chip.chip-bal  .sum-chip-val{color:var(--red);}
 
 /* Table */
 .tbl-wrap{background:var(--card);border-radius:var(--r);border:1px solid var(--border-l);box-shadow:var(--shadow-sm);overflow:hidden;}
@@ -99,15 +115,13 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
 /* Badges */
 .badge{display:inline-block;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700;letter-spacing:.3px;}
 .badge-buy{background:#fff3e0;color:#bf6000;border:1px solid #ffe0b2;}
-.badge-sell{background:#e8f5e9;color:#1b5e20;border:1px solid #c8e6c9;}
-.badge-cust{background:#e3f2fd;color:#0d47a1;border:1px solid #bbdefb;}
-.badge-dr{background:#e8f5e9;color:#1b5e20;}
-.badge-cr{background:#fff3e0;color:#bf6000;}
 .bal-cell{font-weight:700;}
 .bal-cell.zero{color:var(--green);}
 .bal-cell.due{color:var(--red);}
-.btn-collect{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:var(--r-sm);font-size:11px;font-weight:700;cursor:pointer;background:#dc2626;color:#fff;border:none;transition:background .15s;}
-.btn-collect:hover{background:#b91c1c;}
+.btn-pay{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:var(--r-sm);font-size:11px;font-weight:700;cursor:pointer;background:#0d47a1;color:#fff;border:none;transition:background .15s;}
+.btn-pay:hover{background:#0a3175;}
+.empty-state{text-align:center;padding:50px 20px;color:var(--muted);}
+.empty-state i{font-size:48px;color:#d1d9e6;margin-bottom:12px;display:block;}
 
 /* Modal */
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2000;align-items:center;justify-content:center;}
@@ -126,20 +140,46 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
 .modal-foot{padding:12px 16px;display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border-l);}
 .info-row{background:#fafafa;border-radius:var(--r-sm);padding:8px 12px;font-size:12px;color:var(--text);}
 .info-row span{font-weight:700;}
+
+@media print {
+    .tw-nav,.rpt-hdr{display:none!important;}
+    .tw{height:auto!important;overflow:visible!important;}
+    .tw-body{overflow:visible!important;height:auto!important;padding:0!important;}
+    .print-header{display:flex!important;}
+    .tbl-wrap{box-shadow:none!important;overflow:visible!important;}
+    .rpt-table{font-size:10px!important;}
+    .rpt-table thead th{padding:5px 6px!important;font-size:9px!important;}
+    .rpt-table td{padding:5px 6px!important;}
+    .badge{padding:1px 4px!important;font-size:9px!important;}
+    .btn-pay,.bb-outline-white{display:none!important;}
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+}
 </style>
 </head>
 <body>
 <div class="tw">
+
+  <!-- PRINT-ONLY HEADER -->
+  <div class="print-header" style="align-items:center;gap:14px;padding:10px 16px;background:linear-gradient(135deg,#1a2744 0%,#243159 100%);border-bottom:3px solid #c9922a;margin-bottom:8px;">
+    <div style="flex:1;">
+      <div style="color:#c9922a;font-size:18px;font-weight:900;letter-spacing:1px;text-transform:uppercase;"><%=printShopName%></div>
+      <%if (!printAddress.isEmpty()){%><div style="color:rgba(255,255,255,.75);font-size:12px;margin-top:2px;"><%=printAddress%></div><%}%>
+    </div>
+    <div style="text-align:right;color:rgba(255,255,255,.7);font-size:11px;">
+      <div style="font-weight:700;color:#fff;">Agent Paid Report</div>
+      <div><%=fromDate%> &nbsp;to&nbsp; <%=toDate%></div>
+    </div>
+  </div>
+
   <div class="tw-nav"><%@ include file="/assets/navbar/navbar.jsp" %></div>
 
   <!-- HEADER -->
   <div class="rpt-hdr">
     <div class="rpt-title">
-      <i class="fa-solid fa-book-open"></i>
-      <span>TICKET LEDGER</span>
+      <i class="fa-solid fa-hand-holding-dollar"></i>
+      <span>AGENT PAID REPORT</span>
     </div>
     <div class="hdr-divider"></div>
-
     <form method="get" action="" style="display:contents;">
       <div class="fg">
         <div class="fg-lbl">From Date</div>
@@ -162,34 +202,43 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
         <i class="fa-solid fa-magnifying-glass"></i> Search
       </button>
     </form>
-
     <div class="hdr-spacer"></div>
+    <%if (rows.size() > 0) {%>
+    <button class="bb bb-outline-white" onclick="window.print()">
+      <i class="fa-solid fa-print"></i> Print
+    </button>
+    <%}%>
   </div>
 
   <!-- BODY -->
   <div class="tw-body">
-
     <!-- Summary -->
     <div class="sum-row">
-      <div class="sum-chip chip-bill">
-        <div class="sum-chip-lbl">Total Bill</div>
-        <div class="sum-chip-val">&#8377;<%=df.format(totalBill)%></div>
+      <div class="sum-chip">
+        <div class="sum-chip-lbl">Total Agent Bill</div>
+        <div class="sum-chip-val" style="color:var(--navy);">&#8377;<%=df.format(totalBill)%></div>
       </div>
-      <div class="sum-chip chip-paid">
-        <div class="sum-chip-lbl">Total Paid</div>
-        <div class="sum-chip-val">&#8377;<%=df.format(totalPaid)%></div>
+      <div class="sum-chip">
+        <div class="sum-chip-lbl">Total We Paid</div>
+        <div class="sum-chip-val" style="color:var(--green);">&#8377;<%=df.format(totalPaid)%></div>
       </div>
-      <div class="sum-chip chip-bal">
-        <div class="sum-chip-lbl">Total Balance</div>
-        <div class="sum-chip-val">&#8377;<%=df.format(totalBal)%></div>
+      <div class="sum-chip">
+        <div class="sum-chip-lbl">Still Owe Agents</div>
+        <div class="sum-chip-val" style="color:var(--red);">&#8377;<%=df.format(totalBal)%></div>
       </div>
-      <div class="sum-chip" style="background:var(--card);">
+      <div class="sum-chip">
         <div class="sum-chip-lbl">Records</div>
         <div class="sum-chip-val" style="color:var(--violet);"><%=rows.size()%></div>
       </div>
     </div>
 
-    <!-- Table -->
+    <%if (rows.isEmpty()) {%>
+    <div class="empty-state">
+      <i class="fa-solid fa-hand-holding-dollar"></i>
+      <h3 style="font-size:15px;font-weight:700;margin-bottom:6px;">No agent payment records found</h3>
+      <p style="font-size:12px;">Select a date range and click Search</p>
+    </div>
+    <%} else {%>
     <div class="tbl-wrap">
       <table class="rpt-table">
         <thead>
@@ -197,196 +246,160 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
             <th>#</th>
             <th>Date</th>
             <th>Ticket / PNR</th>
-            <th>Party</th>
-            <th>Type</th>
-            <th>DR/CR</th>
-            <th>Bill Amt</th>
-            <th>Paid Amt</th>
+            <th>Route</th>
+            <th>Agent</th>
             <th>Mode</th>
             <th>Txn No</th>
-            <th>Balance</th>
-            <th>Action</th>
+            <th>Agent Bill</th>
+            <th>We Paid</th>
           </tr>
         </thead>
         <tbody>
         <%
-        if (rows.isEmpty()) {
-        %>
-          <tr><td colspan="12" style="text-align:center;padding:30px;color:var(--muted);">
-            <i class="fa-solid fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;"></i>
-            No ledger entries found for this period.
-          </td></tr>
-        <%
-        } else {
-          int sno = 1;
-          for (int i = 0; i < rows.size(); i++) {
+        int sno = 1;
+        for (int i = 0; i < rows.size(); i++) {
             Vector r = (Vector) rows.get(i);
-            int    bookingId  = Integer.parseInt(r.get(0).toString());
-            String tktNo      = r.get(1) != null ? r.get(1).toString() : "-";
-            String pnr        = r.get(2) != null ? r.get(2).toString() : "-";
-            String partyType  = r.get(3) != null ? r.get(3).toString() : "";
-            String partyDisp  = r.get(4) != null ? r.get(4).toString() : "-";
-            String txnType    = r.get(5) != null ? r.get(5).toString() : "";
-            double bill  = r.get(6) != null ? Double.parseDouble(r.get(6).toString()) : 0;
-            double paid  = r.get(7) != null ? Double.parseDouble(r.get(7).toString()) : 0;
-            double bal   = r.get(8) != null ? Double.parseDouble(r.get(8).toString()) : 0;
-            String fdate = r.get(9) != null ? r.get(9).toString() : "";
-            String agentIdRaw    = r.get(10) != null ? r.get(10).toString() : "0";
-            String pName          = r.get(11) != null ? r.get(11).toString() : "";
-            String payModeName    = r.get(12) != null ? r.get(12).toString() : "";
-            String lastTxnNo      = r.get(13) != null ? r.get(13).toString() : "";
+            // Row: [0]ledger_id [1]booking_id [2]ticket_no [3]pnr [4]party_type [5]party_display
+            //      [6]txn_type  [7]bill_amount [8]amount_paid [9]payment_mode [10]transaction_no
+            //      [11]txn_date [12]ow_from [13]ow_to [14]agent_id [15]party_name [16]booking_date
+            int    bookingId  = r.get(1) != null ? Integer.parseInt(r.get(1).toString()) : 0;
+            String tktNo      = r.get(2) != null ? r.get(2).toString() : "-";
+            String pnr        = r.get(3) != null ? r.get(3).toString() : "-";
+            String partyType  = r.get(4) != null ? r.get(4).toString() : "BUY_AGENT";
+            String partyDisp  = r.get(5) != null ? r.get(5).toString() : "-";
+            String txnType    = r.get(6) != null ? r.get(6).toString() : "CR";
+            double bill       = r.get(7) != null ? Double.parseDouble(r.get(7).toString()) : 0;
+            double paid       = r.get(8) != null ? Double.parseDouble(r.get(8).toString()) : 0;
+            String payMode    = r.get(9)  != null ? r.get(9).toString()  : "";
+            String txnNo      = r.get(10) != null ? r.get(10).toString() : "";
+            String fdate      = r.get(11) != null ? r.get(11).toString() : "";
+            String owFrom     = r.get(12) != null ? r.get(12).toString() : "";
+            String owTo       = r.get(13) != null ? r.get(13).toString() : "";
+            String agentIdRaw = r.get(14) != null ? r.get(14).toString() : "0";
 
-            String ptBadge = "badge-cust";
-            String ptLabel = partyType;
-            if ("BUY_AGENT".equals(partyType))  { ptBadge = "badge-buy";  ptLabel = "Buy Agent"; }
-            else if ("SELL_AGENT".equals(partyType)) { ptBadge = "badge-sell"; ptLabel = "Sell Agent"; }
-            else if ("CUSTOMER".equals(partyType))   { ptBadge = "badge-cust"; ptLabel = "Customer"; }
+            String key = bookingId + "|" + partyType;
+            double[] vals = (double[]) balMap.get(key);
+            double bal = vals != null ? vals[1] - vals[2] : 0;
+            boolean isLastForKey = i == ((Integer) lastRowIdx.get(key)).intValue();
 
-            String txnBadge = "DR".equals(txnType) ? "badge-dr" : "badge-cr";
-            String balCls   = bal <= 0.005 ? "zero" : "due";
+            String balCls  = bal <= 0.005 ? "zero" : "due";
+            String safeName = partyDisp.replace("'", "\\'");
         %>
           <tr>
             <td style="color:var(--muted);"><%=sno++%></td>
-            <td style="white-space:nowrap;"><%=fdate%></td>
+            <td style="white-space:nowrap;color:var(--muted);font-size:11px;"><%=fdate%></td>
             <td>
               <div style="font-weight:700;color:var(--gold);"><%=tktNo%></div>
               <div style="font-size:11px;color:var(--muted);"><%=pnr%></div>
             </td>
+            <td style="white-space:nowrap;font-weight:600;">
+              <%=owFrom.isEmpty() && owTo.isEmpty() ? "<span style='color:var(--muted);'>-</span>" : owFrom + " \u2192 " + owTo%>
+            </td>
             <td>
-              <span class="badge <%=ptBadge%>"><%=ptLabel%></span>
+              <span class="badge badge-buy">Buy Agent</span>
               <div style="font-size:12px;margin-top:3px;font-weight:600;"><%=partyDisp%></div>
             </td>
-            <td>-</td>
-            <td><span class="badge <%=txnBadge%>"><%=txnType%></span></td>
-            <td style="font-weight:600;">&#8377;<%=df.format(bill)%></td>
+            <td style="font-size:11px;color:var(--text);"><%=payMode.isEmpty() ? "-" : payMode%></td>
+            <td style="font-size:11px;color:var(--violet);font-weight:600;"><%=txnNo.isEmpty() ? "<span style='color:var(--muted);'>\u2014</span>" : txnNo%></td>
+            <td style="font-weight:600;color:#bf6000;">&#8377;<%=df.format(bill)%></td>
             <td style="color:var(--green);font-weight:600;">&#8377;<%=df.format(paid)%></td>
-            <td style="font-size:11px;color:var(--text);"><%=payModeName.isEmpty() ? "-" : payModeName%></td>
-            <td style="font-size:11px;color:var(--violet);font-weight:600;">
-              <%=lastTxnNo.isEmpty() ? "<span style='color:var(--muted);'>—</span>" : lastTxnNo%>
-            </td>
-            <td class="bal-cell <%=balCls%>">&#8377;<%=df.format(Math.abs(bal))%></td>
-            <td>
-              <%if (bal > 0.005) {%>
-              <button class="btn-collect"
-                onclick="openCollect(<%=bookingId%>,'<%=partyType%>','<%=agentIdRaw%>','<%=partyDisp.replace("'","\\'")%>','<%=txnType%>',<%=df.format(bal)%>)">
-                <i class="fa-solid fa-coins"></i> Collect
-              </button>
-              <%} else {%>
-              <span style="color:var(--green);font-size:11px;font-weight:700;"><i class="fa-solid fa-check"></i> Settled</span>
-              <%}%>
-            </td>
           </tr>
-        <%
-          }
-        }
-        %>
+        <%}%>
         </tbody>
         <tfoot>
           <tr>
             <td colspan="6" style="color:var(--muted);">TOTALS</td>
-            <td>&#8377;<%=df.format(totalBill)%></td>
+            <td style="color:#bf6000;">&#8377;<%=df.format(totalBill)%></td>
             <td style="color:var(--green);">&#8377;<%=df.format(totalPaid)%></td>
-            <td></td><td></td>
-            <td style="color:var(--red);">&#8377;<%=df.format(totalBal)%></td>
-            <td></td>
+            <td style="color:var(--red);">Bal: &#8377;<%=df.format(totalBal)%></td>
           </tr>
         </tfoot>
       </table>
     </div>
-
+    <%}%>
     <div style="height:20px;"></div>
-  </div><!-- /tw-body -->
-</div><!-- /tw -->
+  </div>
+</div>
 
-<!-- ── COLLECT BALANCE MODAL ── -->
-<div class="modal-overlay" id="collectModal">
+<!-- PAY AGENT MODAL -->
+<div class="modal-overlay" id="payModal">
   <div class="modal-box">
     <div class="modal-head">
-      <div class="modal-head-title"><i class="fa-solid fa-coins"></i> Collect Balance</div>
-      <button class="modal-close" onclick="closeCollect()">&times;</button>
+      <div class="modal-head-title"><i class="fa-solid fa-hand-holding-dollar"></i> Pay Agent</div>
+      <button class="modal-close" onclick="closePay()">&times;</button>
     </div>
     <div class="modal-body">
-      <div class="info-row" id="collectInfo"></div>
+      <div class="info-row" id="payInfo"></div>
       <div class="mfg">
-        <label>Collection Date</label>
-        <input type="date" id="collectDate" value="<%=today%>">
+        <label>Payment Date</label>
+        <input type="date" id="payDate" value="<%=today%>">
       </div>
       <div class="mfg">
-        <label>Amount to Collect</label>
-        <input type="number" step="0.01" id="collectAmount" placeholder="0.00">
+        <label>Amount to Pay</label>
+        <input type="number" step="0.01" id="payAmount" placeholder="0.00">
       </div>
       <div class="mfg">
         <label>Payment Mode</label>
-        <select id="collectMode" onchange="handleCollectModeChange()">
+        <select id="payMode" onchange="handlePayModeChange()">
           <option value="">— Select Mode —</option>
           <%for (int i = 0; i < payModes.size(); i++) { Vector pm = (Vector) payModes.get(i);%>
           <option value="<%=pm.get(0)%>" data-cash="<%=pm.get(1).toString().toLowerCase().contains("cash") ? "1" : "0"%>"><%=pm.get(1)%></option>
           <%}%>
         </select>
       </div>
-      <div class="mfg" id="collectTxnRow" style="display:none;">
+      <div class="mfg" id="payTxnRow" style="display:none;">
         <label>Transaction No <span style="color:#dc2626;">*</span></label>
-        <input type="text" id="collectTxnNo" placeholder="Txn / Ref No for online payment">
+        <input type="text" id="payTxnNo" placeholder="Txn / Ref No for online payment">
       </div>
     </div>
     <div class="modal-foot">
-      <button class="bb" style="background:#f1f5f9;color:var(--text);border-color:var(--border);" onclick="closeCollect()">Cancel</button>
-      <button class="bb bb-gold" onclick="saveCollect()"><i class="fa-solid fa-floppy-disk"></i> Save</button>
+      <button class="bb" style="background:#f1f5f9;color:var(--text);border-color:var(--border);" onclick="closePay()">Cancel</button>
+      <button class="bb bb-gold" onclick="savePay()"><i class="fa-solid fa-floppy-disk"></i> Save</button>
     </div>
   </div>
 </div>
 
 <script>
 const ctx = '<%=ctx%>';
-let _cBookingId='', _cPartyType='', _cAgentId='', _cPartyName='', _cTxnType='', _cMaxBal=0;
+let _pBookingId='', _pPartyType='', _pAgentId='', _pPartyName='', _pTxnType='', _pMaxBal=0;
 
-function openCollect(bookingId, partyType, agentId, partyName, txnType, maxBal) {
-    _cBookingId = bookingId;
-    _cPartyType = partyType;
-    _cAgentId   = agentId;
-    _cPartyName = partyName;
-    _cTxnType   = txnType;
-    _cMaxBal    = maxBal;
-    document.getElementById('collectInfo').innerHTML =
-        'Party: <span>' + partyName + '</span> &nbsp;|&nbsp; Balance Due: <span style="color:#dc2626;">&#8377;' + maxBal.toFixed(2) + '</span>';
-    document.getElementById('collectAmount').value = maxBal.toFixed(2);
-    document.getElementById('collectMode').value = '';
-    document.getElementById('collectTxnRow').style.display = 'none';
-    document.getElementById('collectTxnNo').value = '';
-    document.getElementById('collectModal').classList.add('active');
+function openPay(bookingId, partyType, agentId, partyName, txnType, maxBal) {
+    _pBookingId = bookingId; _pPartyType = partyType; _pAgentId = agentId;
+    _pPartyName = partyName; _pTxnType = txnType; _pMaxBal = maxBal;
+    document.getElementById('payInfo').innerHTML =
+        'Agent: <span>' + partyName + '</span> &nbsp;|&nbsp; Balance Owed: <span style="color:#dc2626;">&#8377;' + maxBal.toFixed(2) + '</span>';
+    document.getElementById('payAmount').value = maxBal.toFixed(2);
+    document.getElementById('payMode').value = '';
+    document.getElementById('payTxnRow').style.display = 'none';
+    document.getElementById('payTxnNo').value = '';
+    document.getElementById('payModal').classList.add('active');
 }
-function closeCollect() {
-    document.getElementById('collectModal').classList.remove('active');
+function closePay() {
+    document.getElementById('payModal').classList.remove('active');
 }
-function handleCollectModeChange() {
-    const sel = document.getElementById('collectMode');
+function handlePayModeChange() {
+    const sel = document.getElementById('payMode');
     const opt = sel.options[sel.selectedIndex];
     const isOnline = sel.value && opt.getAttribute('data-cash') === '0';
-    document.getElementById('collectTxnRow').style.display = isOnline ? '' : 'none';
-    if (!isOnline) document.getElementById('collectTxnNo').value = '';
+    document.getElementById('payTxnRow').style.display = isOnline ? '' : 'none';
+    if (!isOnline) document.getElementById('payTxnNo').value = '';
 }
-function saveCollect() {
-    const amt  = parseFloat(document.getElementById('collectAmount').value);
-    const mode = document.getElementById('collectMode').value;
-    const date = document.getElementById('collectDate').value;
-    const txnNo = document.getElementById('collectTxnNo').value.trim();
+function savePay() {
+    const amt  = parseFloat(document.getElementById('payAmount').value);
+    const mode = document.getElementById('payMode').value;
+    const date = document.getElementById('payDate').value;
+    const txnNo = document.getElementById('payTxnNo').value.trim();
     if (!amt || amt <= 0) { alert('Enter a valid amount'); return; }
     if (!mode) { alert('Select a payment mode'); return; }
-    if (!date) { alert('Select a collection date'); return; }
-    const opt = document.getElementById('collectMode').options[document.getElementById('collectMode').selectedIndex];
+    if (!date) { alert('Select a payment date'); return; }
+    const opt = document.getElementById('payMode').options[document.getElementById('payMode').selectedIndex];
     if (opt.getAttribute('data-cash') === '0' && !txnNo) { alert('Enter Transaction No for online payment'); return; }
-
     const params = new URLSearchParams();
-    params.set('bookingId',      _cBookingId);
-    params.set('partyType',      _cPartyType);
-    params.set('agentId',        _cAgentId);
-    params.set('partyName',      _cPartyName);
-    params.set('txnType',        _cTxnType);
-    params.set('amount',         amt);
-    params.set('payModeId',      mode);
-    params.set('collectionDate', date);
-    params.set('txnNo',          txnNo);
-
+    params.set('bookingId', _pBookingId); params.set('partyType', _pPartyType);
+    params.set('agentId', _pAgentId); params.set('partyName', _pPartyName);
+    params.set('txnType', _pTxnType); params.set('amount', amt);
+    params.set('payModeId', mode); params.set('collectionDate', date);
+    params.set('txnNo', txnNo);
     fetch(ctx + '/ticketbooking/collectBalance.jsp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -394,19 +407,13 @@ function saveCollect() {
     })
     .then(r => r.text())
     .then(d => {
-        if (d.trim() === 'SUCCESS') {
-            closeCollect();
-            location.reload();
-        } else {
-            alert('Error: ' + d);
-        }
+        if (d.trim() === 'SUCCESS') { closePay(); location.reload(); }
+        else alert('Error: ' + d);
     })
     .catch(err => alert('Error: ' + err.message));
 }
-
-// Close modal on overlay click
-document.getElementById('collectModal').addEventListener('click', function(e) {
-    if (e.target === this) closeCollect();
+document.getElementById('payModal').addEventListener('click', function(e) {
+    if (e.target === this) closePay();
 });
 </script>
 </body>

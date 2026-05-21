@@ -104,19 +104,42 @@ for (int i = 0; i < vecPer.size(); i++) {
         <a href="<%=request.getContextPath()%>/ticketbooking/pnrEnquiry.jsp" class="sidebar-subitem">
           <i class="fa-solid fa-magnifying-glass" style="margin-right:5px;font-size:11px;"></i>PNR Enquiry
         </a>
-        <a href="<%=request.getContextPath()%>/ticketbooking/report.jsp" class="sidebar-subitem">
-          <i class="fa-solid fa-chart-bar" style="margin-right:5px;font-size:11px;"></i>Ticket Report
-        </a>
         <a href="<%=request.getContextPath()%>/ticketbooking/ledgerReport.jsp" class="sidebar-subitem">
           <i class="fa-solid fa-book-open" style="margin-right:5px;font-size:11px;"></i>Balance Collection
-        </a>
-        <a href="<%=request.getContextPath()%>/ticketbooking/agentStatement.jsp" class="sidebar-subitem">
-          <i class="fa-solid fa-file-lines" style="margin-right:5px;font-size:11px;"></i>Agent Statement
         </a>
       </div>
     </div>
   <% } %>
-  
+
+<% if (permissions.contains(5)) { %>
+    <div class="sidebar-dropdown">
+      <a href="#" class="sidebar-item" data-bs-toggle="collapse" data-bs-target="#reportsMenu">
+        <i class="fas fa-chart-line"></i>
+        <span>Reports</span>
+        <i class="fas fa-chevron-down ms-auto small"></i>
+      </a>
+      <div class="collapse sidebar-submenu" id="reportsMenu">
+        <a href="<%=request.getContextPath()%>/ticketbooking/report.jsp" class="sidebar-subitem">
+          <i class="fa-solid fa-chart-bar" style="margin-right:5px;font-size:11px;"></i>Ticket Report
+        </a>
+        <a href="<%=request.getContextPath()%>/ticketbooking/agentStatement.jsp" class="sidebar-subitem">
+          <i class="fa-solid fa-file-lines" style="margin-right:5px;font-size:11px;"></i>Agent Statement
+        </a>
+        <a href="<%=request.getContextPath()%>/ticketbooking/collectionReport.jsp" class="sidebar-subitem">
+          <i class="fa-solid fa-money-bill-wave" style="margin-right:5px;font-size:11px;"></i>Collection Report
+        </a>
+        <a href="<%=request.getContextPath()%>/ticketbooking/agentPaidReport.jsp" class="sidebar-subitem">
+          <i class="fa-solid fa-hand-holding-dollar" style="margin-right:5px;font-size:11px;"></i>Agent Paid Report
+        </a>
+        <% if (permissions.contains(6)) { %>
+        <a href="<%=request.getContextPath()%>/ticketbooking/editCancelReport.jsp" class="sidebar-subitem">
+          <i class="fa-solid fa-clock-rotate-left" style="margin-right:5px;font-size:11px;"></i>Edit/Cancel Log
+        </a>
+        <% } %>
+      </div>
+    </div>
+<% } %>
+
 <% if (permissions.contains(2)) { %>
     <div class="sidebar-dropdown">
       <a href="#" class="sidebar-item" data-bs-toggle="collapse" data-bs-target="#productMenu">

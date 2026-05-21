@@ -1,5 +1,5 @@
 <%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8"%>
-<%@ page import="java.util.*"%>
+<%@ page import="java.util.*,java.text.DecimalFormat"%>
 <jsp:useBean id="billing" class="billing.billingBean" />
 <%
 Integer userId = (Integer) session.getAttribute("userId");
@@ -194,7 +194,13 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
         String custAmt    = row.get(24) != null ? String.valueOf(row.get(24)) : "";
         String custMode   = row.get(25) != null ? String.valueOf(row.get(25)) : "";
         String createdAt  = row.get(26) != null ? String.valueOf(row.get(26)) : "-";
+        boolean isCancelled = row.size() > 27 && "1".equals(String.valueOf(row.get(27)));
         boolean hasRet    = retDate != null && !retDate.trim().isEmpty();
+        // Load payment history
+        int bookingIdInt = 0;
+        try { bookingIdInt = Integer.parseInt(v0); } catch (Exception ex2) {}
+        java.util.Vector ledgerHistory = new java.util.Vector();
+        try { if (bookingIdInt > 0) ledgerHistory = billing.getTicketLedgerByBookingId(bookingIdInt); } catch (Exception elh) {}
     %>
 
     <!-- ── BOOKING OVERVIEW ── -->
@@ -203,6 +209,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
         <i class="fa-solid fa-ticket fa-lg"></i>
         <span class="result-head-title">Booking Details</span>
         <div class="pnr-chip"><%=pnrVal%></div>
+        <% if (isCancelled) { %><span style="background:#dc2626;color:#fff;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.5px;margin-left:8px;"><i class="fa-solid fa-ban" style="margin-right:4px;"></i>CANCELLED</span><% } %>
       </div>
       <div class="result-body">
         <div class="detail-grid">
@@ -336,6 +343,66 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
           <p style="color:var(--muted);font-size:12px;font-style:italic;">No transaction data recorded</p>
           <%}%>
         </div>
+
+        <!-- PAYMENT HISTORY -->
+        <div class="sec-div">
+          <div class="sec-div-line"></div>
+          <i class="fa-solid fa-clock-rotate-left"></i>
+          <div class="sec-div-title">Payment History</div>
+          <div class="sec-div-line"></div>
+        </div>
+        <%if (ledgerHistory.isEmpty()) {%>
+        <p style="color:var(--muted);font-size:12px;font-style:italic;">No payment entries found</p>
+        <%} else {%>
+        <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead>
+            <tr style="background:linear-gradient(135deg,#1a2744,#243159);">
+              <th style="padding:7px 10px;color:#fff;font-weight:700;text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;">#</th>
+              <th style="padding:7px 10px;color:#fff;font-weight:700;text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;">Date</th>
+              <th style="padding:7px 10px;color:#fff;font-weight:700;text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;">Party</th>
+              <th style="padding:7px 10px;color:#fff;font-weight:700;text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;">Type</th>
+              <th style="padding:7px 10px;color:#fff;font-weight:700;text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;">Mode</th>
+              <th style="padding:7px 10px;color:#fff;font-weight:700;text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;">Txn No</th>
+              <th style="padding:7px 10px;color:#fff;font-weight:700;text-align:right;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+          <%
+          DecimalFormat dfLh = new DecimalFormat("0.00");
+          for (int li = 0; li < ledgerHistory.size(); li++) {
+              Vector lh = (Vector) ledgerHistory.get(li);
+              // [0]id [1]party_type [2]party_display [3]txn_type [4]bill_amount [5]amount [6]payment_mode [7]txn_no [8]txn_date [9]remarks
+              String lPartyType = lh.get(1) != null ? lh.get(1).toString() : "";
+              String lPartyDisp = lh.get(2) != null ? lh.get(2).toString() : "-";
+              String lTxnType   = lh.get(3) != null ? lh.get(3).toString() : "DR";
+              double lAmt       = lh.get(5) != null ? Double.parseDouble(lh.get(5).toString()) : 0;
+              String lMode      = lh.get(6) != null ? lh.get(6).toString() : "";
+              String lTxnNo     = lh.get(7) != null ? lh.get(7).toString() : "";
+              String lDate      = lh.get(8) != null ? lh.get(8).toString() : "-";
+              String lPtBadgeClr = "BUY_AGENT".equals(lPartyType) ? "#bf6000" : "SELL_AGENT".equals(lPartyType) ? "#1b5e20" : "#0d47a1";
+              String lPtLabel = "BUY_AGENT".equals(lPartyType) ? "Buy Agent" : "SELL_AGENT".equals(lPartyType) ? "Sell Agent" : "Customer";
+              String lAmtClr = "CR".equals(lTxnType) ? "#059669" : "#dc2626";
+          %>
+          <tr style="border-bottom:1px solid #e8edf5;<%=li % 2 == 1 ? "background:#f7f8fc;" : ""%>">
+            <td style="padding:7px 10px;color:#94a3b8;"><%=li+1%></td>
+            <td style="padding:7px 10px;color:#64748b;white-space:nowrap;"><%=lDate%></td>
+            <td style="padding:7px 10px;">
+              <span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700;color:<%=lPtBadgeClr%>;background:<%="BUY_AGENT".equals(lPartyType) ? "#fff3e0" : "SELL_AGENT".equals(lPartyType) ? "#e8f5e9" : "#e3f2fd"%>;"><%=lPtLabel%></span>
+              <div style="font-size:11px;margin-top:2px;font-weight:600;"><%=lPartyDisp%></div>
+            </td>
+            <td style="padding:7px 10px;">
+              <span style="font-size:10px;font-weight:700;color:<%="DR".equals(lTxnType) ? "#dc2626" : "#059669"%>;"><%=lTxnType%></span>
+            </td>
+            <td style="padding:7px 10px;font-size:11px;"><%=lMode.isEmpty() ? "-" : lMode%></td>
+            <td style="padding:7px 10px;font-size:11px;font-weight:600;color:#5c4d8a;"><%=lTxnNo.isEmpty() ? "<span style='color:#94a3b8;'>\u2014</span>" : lTxnNo%></td>
+            <td style="padding:7px 10px;text-align:right;font-weight:700;color:<%=lAmtClr%>;">&#8377;<%=dfLh.format(lAmt)%></td>
+          </tr>
+          <%}%>
+          </tbody>
+        </table>
+        </div>
+        <%}%>
 
     </div><!-- /result-body -->
   </div><!-- /result-card -->

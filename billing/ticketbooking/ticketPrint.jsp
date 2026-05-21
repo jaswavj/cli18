@@ -59,6 +59,8 @@ double custPaid    = row.size() > 29 && row.get(29) != null ? ((Number)row.get(2
 // Payment summary calculations
 double totalSell   = sellAmt.isEmpty() ? 0.0 : Double.parseDouble(sellAmt.replaceAll("[^\\d.]",""));
 double totalCust   = custAmt.isEmpty() ? 0.0 : Double.parseDouble(custAmt.replaceAll("[^\\d.]",""));
+double sellBal     = totalSell - sellPaid;
+double custBal     = totalCust - custPaid;
 double grandTotal  = totalSell + totalCust;
 double grandPaid   = sellPaid + custPaid;
 double grandBal    = grandTotal - grandPaid;
@@ -66,6 +68,31 @@ java.text.DecimalFormat pf = new java.text.DecimalFormat("#,##0.00");
 boolean hasPaySummary = grandTotal > 0;
 boolean hasRet     = retDate != null && !retDate.trim().isEmpty();
 String ctx = request.getContextPath();
+
+// Load ledger history for per-party payment mode + txn_no detail
+java.util.Vector ledHist = new java.util.Vector();
+try { ledHist = billing.getTicketLedgerByBookingId(bookingId); } catch (Exception elh2) {}
+String sellLedMode = ""; String sellLedTxnNo = "";
+String custLedMode = ""; String custLedTxnNo = "";
+double grandCashPaid = 0, grandOnlinePaid = 0;
+String lastOnlineTxnNo = "";
+for (int li = 0; li < ledHist.size(); li++) {
+    java.util.Vector lh = (java.util.Vector) ledHist.get(li);
+    String lPT  = lh.get(1) != null ? lh.get(1).toString() : "";
+    String lMod = lh.get(6) != null ? lh.get(6).toString() : "";
+    String lTxn = lh.get(7) != null ? lh.get(7).toString() : "";
+    double lAmt = lh.get(5) != null ? Double.parseDouble(lh.get(5).toString()) : 0;
+    boolean lisCash = lMod.toLowerCase().contains("cash");
+    if ("SELL_AGENT".equals(lPT)) {
+        if (!lMod.isEmpty()) { sellLedMode = lMod; sellLedTxnNo = lTxn; }
+    } else if ("CUSTOMER".equals(lPT)) {
+        if (!lMod.isEmpty()) { custLedMode = lMod; custLedTxnNo = lTxn; }
+    }
+    if (lAmt > 0) {
+        if (lisCash) grandCashPaid += lAmt;
+        else { grandOnlinePaid += lAmt; if (!lTxn.isEmpty()) lastOnlineTxnNo = lTxn; }
+    }
+}
 %>
 <!DOCTYPE html>
 <html lang="en">
@@ -215,7 +242,7 @@ body {
 .txn-badge.sell { background: #e8f5e9; color: #2e7d32; border: 1pt solid #a5d6a7; }
 .txn-badge.cust { background: #e3f2fd; color: #0d47a1; border: 1pt solid #90caf9; }
 .txn-agent { font-weight: 700; color: #1a2744; font-size: 8pt; }
-.txn-mode  { font-size: 7.5pt; color: #64748b; }
+.txn-balance  { font-size: 7.5pt; color: #64748b; }
 .txn-amt   { text-align: right; font-weight: 800; color: #059669; font-size: 9pt; white-space: nowrap; }
 
 /* ── COMPACT FLIGHT SECTION FOR RETURN TICKETS ── */
@@ -294,6 +321,21 @@ body {
 .pay-bal-due .pay-row-lbl { color: #d97706; font-weight: 700; }
 .pay-bal-ok  .pay-row-amt { color: #059669; font-size: 9pt; }
 .pay-bal-due .pay-row-amt { color: #d97706; font-size: 9pt; }
+
+/* ── PAYMENT MODE SUB-ROWS ── */
+.txn-mode { font-size: 7pt; margin-top: 1.5pt; }
+.txn-mode-cash   { color: #2e7d32; }
+.txn-mode-online { color: #0d47a1; }
+.pay-mode-row {
+    padding: 0.8mm 3mm 1mm 6mm; font-size: 7.5pt;
+    border-bottom: 1pt solid #e8edf5;
+    display: flex; justify-content: space-between;
+}
+.pay-mode-cash  .pay-row-lbl { color: #2e7d32; font-size: 7.5pt; }
+.pay-mode-cash  .pay-row-amt { color: #2e7d32; font-size: 7.5pt; }
+.pay-mode-online .pay-row-lbl { color: #0d47a1; font-size: 7.5pt; }
+.pay-mode-online .pay-row-amt { color: #0d47a1; font-size: 7.5pt; }
+.pay-mode-txn { padding: 0.3mm 3mm 1mm 8mm; font-size: 6.5pt; color: #5c4d8a; font-style: italic; border-bottom: 1pt solid #e8edf5; }
 
 .pt-1 { padding-top: 1mm; }
 </style>
@@ -440,30 +482,9 @@ body {
       </table>
     </div><!-- /pax-col -->
 
-    <!-- Right: Transaction + Payment Summary -->
-    <%if (!sellAgent.isEmpty() || !custName.isEmpty() || !custAmt.isEmpty() || hasPaySummary) {%>
+    <!-- Right: Payment Summary -->
+    <%if (hasPaySummary) {%>
     <div class="txn-col">
-      <div class="sec-head">
-        <span class="sec-head-icon">&#9881;</span>
-        <span class="sec-head-title">Transaction</span>
-      </div>
-      <table class="txn-table">
-        <%if (!sellAgent.isEmpty()) {%>
-        <tr>
-          <td class="txn-type-cell"><span class="txn-badge sell">Sell</span></td>
-          <td><div class="txn-agent"><%=sellAgent%></div><div class="txn-mode"><%=sellMode.isEmpty()?"":sellMode%></div></td>
-          <td class="txn-amt">&#8377;<%=sellAmt.isEmpty()?"—":sellAmt%></td>
-        </tr>
-        <%}%>
-        <%if (!custName.isEmpty() || !custAmt.isEmpty()) {%>
-        <tr>
-          <td class="txn-type-cell"><span class="txn-badge cust">Cust.</span></td>
-          <td><div class="txn-agent"><%=custName.isEmpty()?"—":custName%></div><div class="txn-mode"><%=custMode.isEmpty()?"":custMode%></div></td>
-          <td class="txn-amt">&#8377;<%=custAmt.isEmpty()?"—":custAmt%></td>
-        </tr>
-        <%}%>
-      </table>
-      <%if (hasPaySummary) {%>
       <div class="pay-summary">
         <div class="pay-summary-head"><span class="gold">&#9670;</span> Payment</div>
         <div class="pay-row pay-total">
@@ -471,7 +492,7 @@ body {
           <span class="pay-row-amt">&#8377;&nbsp;<%=pf.format(grandTotal)%></span>
         </div>
         <div class="pay-row pay-paid">
-          <span class="pay-row-lbl">Paid</span>
+          <span class="pay-row-lbl">Paid<%if(grandOnlinePaid>0.005&&grandCashPaid>0.005){%> <span style="font-size:7pt;font-weight:600;color:#64748b;">(Cash+Online)</span><%}else if(grandOnlinePaid>0.005){%> <span style="font-size:7pt;font-weight:600;color:#64748b;">(Online)</span><%}else if(grandCashPaid>0.005){%> <span style="font-size:7pt;font-weight:600;color:#64748b;">(Cash)</span><%}%></span>
           <span class="pay-row-amt">&#8377;&nbsp;<%=pf.format(grandPaid)%></span>
         </div>
         <div class="pay-row <%=grandBal <= 0.005 ? "pay-bal-ok" : "pay-bal-due"%>">
@@ -479,7 +500,6 @@ body {
           <span class="pay-row-amt">&#8377;&nbsp;<%=pf.format(Math.abs(grandBal))%></span>
         </div>
       </div>
-      <%}%>
     </div><!-- /txn-col -->
     <%}%>
   </div><!-- /pax-txn-grid -->

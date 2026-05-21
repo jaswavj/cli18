@@ -50,6 +50,11 @@ try {
     String sellPaidStr = request.getParameter("sellPaidAmount");
     String custPaidStr = request.getParameter("custPaidAmount");
 
+    // Transaction numbers for online payments
+    String buyTxnNo  = request.getParameter("buyTxnNo");
+    String sellTxnNo = request.getParameter("sellTxnNo");
+    String custTxnNo = request.getParameter("custTxnNo");
+
     // Validation
     if (bookingDate == null || bookingDate.trim().isEmpty()) {
         out.print("ERROR:Booking date is required"); return;
@@ -82,9 +87,9 @@ try {
     Double  custAmount  = (custAmountStr  != null && !custAmountStr.isEmpty())  ? Double.parseDouble(custAmountStr)  : null;
     Integer custModeId  = (custModeIdStr  != null && !custModeIdStr.isEmpty())  ? Integer.parseInt(custModeIdStr)  : null;
 
-    Double buyPaidAmount  = (buyPaidStr  != null && !buyPaidStr.isEmpty())  ? Double.parseDouble(buyPaidStr)  : null;
-    Double sellPaidAmount = (sellPaidStr != null && !sellPaidStr.isEmpty()) ? Double.parseDouble(sellPaidStr) : null;
-    Double custPaidAmount = (custPaidStr != null && !custPaidStr.isEmpty()) ? Double.parseDouble(custPaidStr) : null;
+    Double buyPaidAmount  = (buyPaidStr  != null && !buyPaidStr.trim().isEmpty())  ? Double.parseDouble(buyPaidStr.trim())  : 0.0;
+    Double sellPaidAmount = (sellPaidStr != null && !sellPaidStr.trim().isEmpty()) ? Double.parseDouble(sellPaidStr.trim()) : 0.0;
+    Double custPaidAmount = (custPaidStr != null && !custPaidStr.trim().isEmpty()) ? Double.parseDouble(custPaidStr.trim()) : 0.0;
 
     // Passenger names array
     String[] passengerNames = new String[noOfSeats];
@@ -103,7 +108,8 @@ try {
         sellAgentId, sellAmount, sellModeId,
         customerName, custAmount, custModeId,
         passengerNames, userId,
-        buyPaidAmount, sellPaidAmount, custPaidAmount
+        buyPaidAmount, sellPaidAmount, custPaidAmount,
+        buyTxnNo, sellTxnNo, custTxnNo
     );
 
     String ticketNo = billing.getTicketNo(bookingId);

@@ -6101,6 +6101,94 @@ public int getOrInsertTicketCity(String name) throws Exception {
     }
 }
 
+// ── ticket_flightno lookup ──────────────────────────────────────────────────
+public Vector searchTicketFlightNo(String term) throws Exception {
+    Connection con = null; PreparedStatement pt = null; ResultSet rs = null;
+    try {
+        con = util.DBConnectionManager.getConnectionFromPool();
+        Vector vec = new Vector();
+        pt = con.prepareStatement(
+            "SELECT id, value FROM ticket_flightno WHERE value LIKE ? ORDER BY value LIMIT 10");
+        pt.setString(1, "%" + term + "%");
+        rs = pt.executeQuery();
+        while (rs.next()) {
+            Vector row = new Vector();
+            row.addElement(rs.getInt("id"));
+            row.addElement(rs.getString("value"));
+            vec.addElement(row);
+        }
+        return vec;
+    } finally {
+        if (rs != null) try { rs.close(); } catch (SQLException e) { ; }
+        if (pt != null) try { pt.close(); } catch (SQLException e) { ; }
+        if (con != null) try { con.close(); } catch (Exception e) {}
+    }
+}
+
+public void getOrInsertTicketFlightNo(String name) throws Exception {
+    if (name == null || name.trim().isEmpty()) return;
+    Connection con = null; PreparedStatement pt = null; ResultSet rs = null;
+    try {
+        con = util.DBConnectionManager.getConnectionFromPool();
+        pt = con.prepareStatement("SELECT id FROM ticket_flightno WHERE LOWER(value) = LOWER(?) LIMIT 1");
+        pt.setString(1, name.trim());
+        rs = pt.executeQuery();
+        if (rs.next()) return;
+        rs.close(); pt.close();
+        pt = con.prepareStatement("INSERT IGNORE INTO ticket_flightno (value) VALUES (?)");
+        pt.setString(1, name.trim());
+        pt.executeUpdate();
+    } finally {
+        if (rs != null) try { rs.close(); } catch (SQLException e) { ; }
+        if (pt != null) try { pt.close(); } catch (SQLException e) { ; }
+        if (con != null) try { con.close(); } catch (Exception e) {}
+    }
+}
+
+// ── ticket_airline lookup ───────────────────────────────────────────────────
+public Vector searchTicketAirline(String term) throws Exception {
+    Connection con = null; PreparedStatement pt = null; ResultSet rs = null;
+    try {
+        con = util.DBConnectionManager.getConnectionFromPool();
+        Vector vec = new Vector();
+        pt = con.prepareStatement(
+            "SELECT id, value FROM ticket_airline WHERE value LIKE ? ORDER BY value LIMIT 10");
+        pt.setString(1, "%" + term + "%");
+        rs = pt.executeQuery();
+        while (rs.next()) {
+            Vector row = new Vector();
+            row.addElement(rs.getInt("id"));
+            row.addElement(rs.getString("value"));
+            vec.addElement(row);
+        }
+        return vec;
+    } finally {
+        if (rs != null) try { rs.close(); } catch (SQLException e) { ; }
+        if (pt != null) try { pt.close(); } catch (SQLException e) { ; }
+        if (con != null) try { con.close(); } catch (Exception e) {}
+    }
+}
+
+public void getOrInsertTicketAirline(String name) throws Exception {
+    if (name == null || name.trim().isEmpty()) return;
+    Connection con = null; PreparedStatement pt = null; ResultSet rs = null;
+    try {
+        con = util.DBConnectionManager.getConnectionFromPool();
+        pt = con.prepareStatement("SELECT id FROM ticket_airline WHERE LOWER(value) = LOWER(?) LIMIT 1");
+        pt.setString(1, name.trim());
+        rs = pt.executeQuery();
+        if (rs.next()) return;
+        rs.close(); pt.close();
+        pt = con.prepareStatement("INSERT IGNORE INTO ticket_airline (value) VALUES (?)");
+        pt.setString(1, name.trim());
+        pt.executeUpdate();
+    } finally {
+        if (rs != null) try { rs.close(); } catch (SQLException e) { ; }
+        if (pt != null) try { pt.close(); } catch (SQLException e) { ; }
+        if (con != null) try { con.close(); } catch (Exception e) {}
+    }
+}
+
 public Vector getTicketAgents() throws Exception {
     Connection con = null;
     PreparedStatement pt = null;
@@ -6185,7 +6273,8 @@ public int saveTicketBooking(
         Integer sellAgentId, Double sellAmount, Integer sellPaymentModeId,
         String customerName, Double customerAmount, Integer customerPaymentModeId,
         String[] passengerNames, int createdBy,
-        Double buyPaidAmount, Double sellPaidAmount, Double custPaidAmount) throws Exception {
+        Double buyPaidAmount, Double sellPaidAmount, Double custPaidAmount,
+        String buyTxnNo, String sellTxnNo, String custTxnNo) throws Exception {
 
     Connection con = null;
     PreparedStatement pt = null;
@@ -6273,8 +6362,8 @@ public int saveTicketBooking(
         // ── 4. Ledger entries ──────────────────────────────────────────────
         String ledSql =
             "INSERT INTO ticket_ledger " +
-            "(booking_id, party_type, agent_id, party_name, transaction_type, bill_amount, amount, payment_mode_id, remarks, transaction_date) " +
-            "VALUES (?,?,?,?,?,?,?,?,?,?)";
+            "(booking_id, party_type, agent_id, party_name, transaction_type, bill_amount, amount, payment_mode_id, transaction_no, remarks, transaction_date) " +
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)";
 
         // Buy from agent → CR (we owe agent)
         if (buyAgentId != null && buyAmount != null && buyAmount > 0) {
@@ -6285,11 +6374,13 @@ public int saveTicketBooking(
             pt.setNull(4, Types.VARCHAR);
             pt.setString(5, "CR");
             pt.setDouble(6, buyAmount);
-            double bPaid = (buyPaidAmount != null) ? buyPaidAmount : buyAmount;
+            double bPaid = (buyPaidAmount != null) ? buyPaidAmount : 0.0;
             pt.setDouble(7, bPaid);
             if (buyPaymentModeId != null) pt.setInt(8, buyPaymentModeId); else pt.setNull(8, Types.INTEGER);
-            pt.setString(9, "Buy ticket | PNR: " + (pnr != null ? pnr : "-"));
-            pt.setString(10, bookingDate);
+            String btnStr = (buyTxnNo != null && !buyTxnNo.trim().isEmpty()) ? buyTxnNo.trim() : null;
+            if (btnStr != null) pt.setString(9, btnStr); else pt.setNull(9, Types.VARCHAR);
+            pt.setString(10, "Buy ticket | PNR: " + (pnr != null ? pnr : "-"));
+            pt.setString(11, bookingDate);
             pt.executeUpdate();
             pt.close();
         }
@@ -6303,11 +6394,13 @@ public int saveTicketBooking(
             pt.setNull(4, Types.VARCHAR);
             pt.setString(5, "DR");
             pt.setDouble(6, sellAmount);
-            double sPaid = (sellPaidAmount != null) ? sellPaidAmount : sellAmount;
+            double sPaid = (sellPaidAmount != null) ? sellPaidAmount : 0.0;
             pt.setDouble(7, sPaid);
             if (sellPaymentModeId != null) pt.setInt(8, sellPaymentModeId); else pt.setNull(8, Types.INTEGER);
-            pt.setString(9, "Sell ticket | PNR: " + (pnr != null ? pnr : "-"));
-            pt.setString(10, bookingDate);
+            String stnStr = (sellTxnNo != null && !sellTxnNo.trim().isEmpty()) ? sellTxnNo.trim() : null;
+            if (stnStr != null) pt.setString(9, stnStr); else pt.setNull(9, Types.VARCHAR);
+            pt.setString(10, "Sell ticket | PNR: " + (pnr != null ? pnr : "-"));
+            pt.setString(11, bookingDate);
             pt.executeUpdate();
             pt.close();
         }
@@ -6321,13 +6414,33 @@ public int saveTicketBooking(
             pt.setString(4, (customerName != null && !customerName.isEmpty()) ? customerName : "-");
             pt.setString(5, "DR");
             pt.setDouble(6, customerAmount);
-            double cPaid = (custPaidAmount != null) ? custPaidAmount : customerAmount;
+            double cPaid = (custPaidAmount != null) ? custPaidAmount : 0.0;
             pt.setDouble(7, cPaid);
             if (customerPaymentModeId != null) pt.setInt(8, customerPaymentModeId); else pt.setNull(8, Types.INTEGER);
-            pt.setString(9, "Customer payment | PNR: " + (pnr != null ? pnr : "-"));
-            pt.setString(10, bookingDate);
+            String ctnStr = (custTxnNo != null && !custTxnNo.trim().isEmpty()) ? custTxnNo.trim() : null;
+            if (ctnStr != null) pt.setString(9, ctnStr); else pt.setNull(9, Types.VARCHAR);
+            pt.setString(10, "Customer payment | PNR: " + (pnr != null ? pnr : "-"));
+            pt.setString(11, bookingDate);
             pt.executeUpdate();
             pt.close();
+        }
+
+        // ── 5. Autocomplete lookups (same connection / same commit) ────────
+        if (onewayFlightNo != null && !onewayFlightNo.trim().isEmpty()) {
+            pt = con.prepareStatement("INSERT IGNORE INTO ticket_flightno (value) VALUES (?)");
+            pt.setString(1, onewayFlightNo.trim()); pt.executeUpdate(); pt.close();
+        }
+        if (onewayAirlines != null && !onewayAirlines.trim().isEmpty()) {
+            pt = con.prepareStatement("INSERT IGNORE INTO ticket_airline (value) VALUES (?)");
+            pt.setString(1, onewayAirlines.trim()); pt.executeUpdate(); pt.close();
+        }
+        if (returnFlightNo != null && !returnFlightNo.trim().isEmpty()) {
+            pt = con.prepareStatement("INSERT IGNORE INTO ticket_flightno (value) VALUES (?)");
+            pt.setString(1, returnFlightNo.trim()); pt.executeUpdate(); pt.close();
+        }
+        if (returnAirlines != null && !returnAirlines.trim().isEmpty()) {
+            pt = con.prepareStatement("INSERT IGNORE INTO ticket_airline (value) VALUES (?)");
+            pt.setString(1, returnAirlines.trim()); pt.executeUpdate(); pt.close();
         }
 
         con.commit();
@@ -6339,6 +6452,7 @@ public int saveTicketBooking(
     } finally {
         if (rs  != null) try { rs.close();  } catch (Exception e) { ; }
         if (pt  != null) try { pt.close();  } catch (Exception e) { ; }
+        if (con != null) try { con.setAutoCommit(true); } catch (Exception e) { ; }
         if (con != null) try { con.close(); } catch (Exception e) { ; }
     }
 }
@@ -6374,7 +6488,7 @@ public Vector getPNRDetails(String pnr) {
             " ba.name AS buy_agent, b.buy_amount, bm.modes AS buy_mode," +
             " sa.name AS sell_agent, b.sell_amount, sm.modes AS sell_mode," +
             " b.customer_name, b.customer_amount, cm.modes AS cust_mode," +
-            " b.created_at" +
+            " b.created_at, COALESCE(b.is_cancelled,0) AS is_cancelled" +
             " FROM ticket_booking b" +
             " LEFT JOIN ticket_city cf  ON cf.id  = b.oneway_from_id" +
             " LEFT JOIN ticket_city ct  ON ct.id  = b.oneway_to_id" +
@@ -6454,6 +6568,428 @@ public String getLastTicketNo() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GET TICKET BY ID FULL  –  all raw IDs for edit-form population
+// Row: [0]id [1]pnr [2]bookingDate
+//      [3]owDate [4]owTime [5]owFromId [6]owFromName [7]owToId [8]owToName
+//      [9]owFlightNo [10]owAirlines
+//      [11]retDate [12]retTime [13]retFromId [14]retFromName [15]retToId [16]retToName
+//      [17]retFlightNo [18]retAirlines
+//      [19]seats [20]phone
+//      [21]buyAgentId [22]buyAgentName [23]buyAmount [24]buyModeId [25]buyModeName [26]buyPaid
+//      [27]sellAgentId [28]sellAgentName [29]sellAmount [30]sellModeId [31]sellModeName [32]sellPaid
+//      [33]custName [34]custAmount [35]custModeId [36]custModeName [37]custPaid
+//      [38]ticketNo [39]createdAt [40]isCancelled
+// ─────────────────────────────────────────────────────────────────────────────
+public Vector getTicketByIdFull(int id) throws Exception {
+    Vector result = new Vector();
+    Connection con = null; PreparedStatement pt = null; ResultSet rs = null;
+    try {
+        con = util.DBConnectionManager.getConnectionFromPool();
+        String sql =
+            "SELECT b.id, b.pnr, b.booking_date," +
+            " b.oneway_travel_date, b.oneway_travel_time," +
+            " b.oneway_from_id, cf.name AS ow_from," +
+            " b.oneway_to_id, ct.name AS ow_to," +
+            " b.oneway_flight_no, b.oneway_airlines," +
+            " b.return_travel_date, b.return_travel_time," +
+            " b.return_from_id, rf.name AS ret_from," +
+            " b.return_to_id, rt2.name AS ret_to," +
+            " b.return_flight_no, b.return_airlines," +
+            " b.no_of_seats, b.phone," +
+            " b.buy_agent_id, ba.name AS buy_agent_name," +
+            " b.buy_amount, b.buy_payment_mode_id, bm.modes AS buy_mode_name," +
+            " COALESCE(b.buy_paid_amount,0) AS buy_paid," +
+            " b.sell_agent_id, sa.name AS sell_agent_name," +
+            " b.sell_amount, b.sell_payment_mode_id, sm.modes AS sell_mode_name," +
+            " COALESCE(b.sell_paid_amount,0) AS sell_paid," +
+            " b.customer_name, b.customer_amount, b.customer_payment_mode_id, cm.modes AS cust_mode_name," +
+            " COALESCE(b.cust_paid_amount,0) AS cust_paid," +
+            " b.ticket_no, b.created_at, COALESCE(b.is_cancelled,0) AS is_cancelled," +
+            " (SELECT tl.transaction_no FROM ticket_ledger tl WHERE tl.booking_id=b.id AND tl.party_type='BUY_AGENT'  LIMIT 1) AS buy_txn_no," +
+            " (SELECT tl.transaction_no FROM ticket_ledger tl WHERE tl.booking_id=b.id AND tl.party_type='SELL_AGENT' LIMIT 1) AS sell_txn_no," +
+            " (SELECT tl.transaction_no FROM ticket_ledger tl WHERE tl.booking_id=b.id AND tl.party_type='CUSTOMER'   LIMIT 1) AS cust_txn_no" +
+            " FROM ticket_booking b" +
+            " LEFT JOIN ticket_city cf  ON cf.id  = b.oneway_from_id" +
+            " LEFT JOIN ticket_city ct  ON ct.id  = b.oneway_to_id" +
+            " LEFT JOIN ticket_city rf  ON rf.id  = b.return_from_id" +
+            " LEFT JOIN ticket_city rt2 ON rt2.id = b.return_to_id" +
+            " LEFT JOIN ticket_agent ba ON ba.id  = b.buy_agent_id" +
+            " LEFT JOIN ticket_agent sa ON sa.id  = b.sell_agent_id" +
+            " LEFT JOIN ticket_payment_mode bm ON bm.id = b.buy_payment_mode_id" +
+            " LEFT JOIN ticket_payment_mode sm ON sm.id = b.sell_payment_mode_id" +
+            " LEFT JOIN ticket_payment_mode cm ON cm.id = b.customer_payment_mode_id" +
+            " WHERE b.id = ? LIMIT 1";
+        pt = con.prepareStatement(sql);
+        pt.setInt(1, id);
+        rs = pt.executeQuery();
+        if (rs.next()) {
+            Vector row = new Vector();
+            for (int i = 1; i <= rs.getMetaData().getColumnCount(); i++) row.add(rs.getObject(i));
+            result.add(row);
+        }
+    } finally {
+        try { if (rs!=null) rs.close(); } catch (Exception e) {}
+        try { if (pt!=null) pt.close(); } catch (Exception e) {}
+        try { if (con!=null) con.close(); } catch (Exception e) {}
+    }
+    return result;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UPDATE TICKET BOOKING  –  header fields + passengers, audit-logged
+// ─────────────────────────────────────────────────────────────────────────────
+public void updateTicketBooking(
+        int bookingId,
+        String pnr, String bookingDate,
+        String onewayDate, String onewayTime, int onewayFromId, int onewayToId,
+        String onewayFlightNo, String onewayAirlines,
+        String returnDate, String returnTime,
+        Integer returnFromId, Integer returnToId,
+        String returnFlightNo, String returnAirlines,
+        int noOfSeats, String phone,
+        Integer buyAgentId, Double buyAmount, Integer buyModeId,
+        Integer sellAgentId, Double sellAmount, Integer sellModeId,
+        String customerName, Double customerAmount, Integer custModeId,
+        String[] passengerNames, int updatedBy, String remarks) throws Exception {
+
+    Connection con = null; PreparedStatement pt = null;
+    String today = new java.text.SimpleDateFormat("yyyy-MM-dd").format(new java.util.Date());
+    String now   = new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date());
+    try {
+        con = util.DBConnectionManager.getConnectionFromPool();
+        con.setAutoCommit(false);
+
+        // 0. Build change description (before → after)
+        StringBuilder _cd = new StringBuilder();
+        PreparedStatement ptO = con.prepareStatement(
+            "SELECT b.pnr, DATE_FORMAT(b.booking_date,'%Y-%m-%d')," +
+            " DATE_FORMAT(b.oneway_travel_date,'%Y-%m-%d'), COALESCE(b.oneway_travel_time,'')," +
+            " COALESCE(cf.name,''), COALESCE(ct.name,'')," +
+            " COALESCE(b.oneway_flight_no,''), COALESCE(b.oneway_airlines,'')," +
+            " DATE_FORMAT(b.return_travel_date,'%Y-%m-%d'), COALESCE(b.return_travel_time,'')," +
+            " COALESCE(rf.name,''), COALESCE(rt2.name,'')," +
+            " COALESCE(b.return_flight_no,''), COALESCE(b.return_airlines,'')," +
+            " b.no_of_seats, COALESCE(b.phone,'')," +
+            " COALESCE(ba.name,''), COALESCE(b.buy_amount,0), COALESCE(bm.modes,'')," +
+            " COALESCE(sa.name,''), COALESCE(b.sell_amount,0), COALESCE(sm.modes,'')," +
+            " COALESCE(b.customer_name,''), COALESCE(b.customer_amount,0), COALESCE(cm.modes,'')" +
+            " FROM ticket_booking b" +
+            " LEFT JOIN ticket_city cf  ON cf.id=b.oneway_from_id" +
+            " LEFT JOIN ticket_city ct  ON ct.id=b.oneway_to_id" +
+            " LEFT JOIN ticket_city rf  ON rf.id=b.return_from_id" +
+            " LEFT JOIN ticket_city rt2 ON rt2.id=b.return_to_id" +
+            " LEFT JOIN ticket_agent ba ON ba.id=b.buy_agent_id" +
+            " LEFT JOIN ticket_agent sa ON sa.id=b.sell_agent_id" +
+            " LEFT JOIN ticket_payment_mode bm ON bm.id=b.buy_payment_mode_id" +
+            " LEFT JOIN ticket_payment_mode sm ON sm.id=b.sell_payment_mode_id" +
+            " LEFT JOIN ticket_payment_mode cm ON cm.id=b.customer_payment_mode_id" +
+            " WHERE b.id=? LIMIT 1");
+        ptO.setInt(1, bookingId);
+        ResultSet rsO = ptO.executeQuery();
+        if (rsO.next()) {
+            PreparedStatement ptN = con.prepareStatement(
+                "SELECT (SELECT name  FROM ticket_city         WHERE id=?) owf," +
+                "       (SELECT name  FROM ticket_city         WHERE id=?) owt," +
+                "       (SELECT name  FROM ticket_city         WHERE id=?) rtf," +
+                "       (SELECT name  FROM ticket_city         WHERE id=?) rtt," +
+                "       (SELECT name  FROM ticket_agent        WHERE id=?) ba," +
+                "       (SELECT modes FROM ticket_payment_mode WHERE id=?) bm," +
+                "       (SELECT name  FROM ticket_agent        WHERE id=?) sa," +
+                "       (SELECT modes FROM ticket_payment_mode WHERE id=?) sm," +
+                "       (SELECT modes FROM ticket_payment_mode WHERE id=?) cm");
+            ptN.setInt(1, onewayFromId); ptN.setInt(2, onewayToId);
+            if (returnFromId!=null) ptN.setInt(3,returnFromId); else ptN.setNull(3,Types.INTEGER);
+            if (returnToId!=null)   ptN.setInt(4,returnToId);   else ptN.setNull(4,Types.INTEGER);
+            if (buyAgentId!=null)   ptN.setInt(5,buyAgentId);   else ptN.setNull(5,Types.INTEGER);
+            if (buyModeId!=null)    ptN.setInt(6,buyModeId);    else ptN.setNull(6,Types.INTEGER);
+            if (sellAgentId!=null)  ptN.setInt(7,sellAgentId);  else ptN.setNull(7,Types.INTEGER);
+            if (sellModeId!=null)   ptN.setInt(8,sellModeId);   else ptN.setNull(8,Types.INTEGER);
+            if (custModeId!=null)   ptN.setInt(9,custModeId);   else ptN.setNull(9,Types.INTEGER);
+            ResultSet rsN = ptN.executeQuery();
+            String nOwf="",nOwt="",nRtf="",nRtt="",nBa="",nBm="",nSa="",nSm="",nCm="";
+            if (rsN.next()) {
+                nOwf=rsN.getString(1)!=null?rsN.getString(1):""; nOwt=rsN.getString(2)!=null?rsN.getString(2):"";
+                nRtf=rsN.getString(3)!=null?rsN.getString(3):""; nRtt=rsN.getString(4)!=null?rsN.getString(4):"";
+                nBa=rsN.getString(5)!=null?rsN.getString(5):"";  nBm=rsN.getString(6)!=null?rsN.getString(6):"";
+                nSa=rsN.getString(7)!=null?rsN.getString(7):"";  nSm=rsN.getString(8)!=null?rsN.getString(8):"";
+                nCm=rsN.getString(9)!=null?rsN.getString(9):"";
+            }
+            rsN.close(); ptN.close();
+            // Old values
+            String oPnr=rsO.getString(1)!=null?rsO.getString(1):"";
+            String oBDate=rsO.getString(2)!=null?rsO.getString(2):"";
+            String oOwDate=rsO.getString(3)!=null?rsO.getString(3):"";
+            String oOwTime=rsO.getString(4)!=null?rsO.getString(4):"";
+            String oOwf=rsO.getString(5)!=null?rsO.getString(5):"";
+            String oOwt=rsO.getString(6)!=null?rsO.getString(6):"";
+            String oOwFlt=rsO.getString(7)!=null?rsO.getString(7):"";
+            String oOwAir=rsO.getString(8)!=null?rsO.getString(8):"";
+            String oRetDate=rsO.getString(9)!=null?rsO.getString(9):"";
+            String oRetTime=rsO.getString(10)!=null?rsO.getString(10):"";
+            String oRtf=rsO.getString(11)!=null?rsO.getString(11):"";
+            String oRtt=rsO.getString(12)!=null?rsO.getString(12):"";
+            String oRetFlt=rsO.getString(13)!=null?rsO.getString(13):"";
+            String oRetAir=rsO.getString(14)!=null?rsO.getString(14):"";
+            int oSeats=rsO.getInt(15);
+            String oPhone=rsO.getString(16)!=null?rsO.getString(16):"";
+            String oBa=rsO.getString(17)!=null?rsO.getString(17):"";
+            double oBuyAmt=rsO.getDouble(18);
+            String oBm=rsO.getString(19)!=null?rsO.getString(19):"";
+            String oSa=rsO.getString(20)!=null?rsO.getString(20):"";
+            double oSellAmt=rsO.getDouble(21);
+            String oSm=rsO.getString(22)!=null?rsO.getString(22):"";
+            String oCustN=rsO.getString(23)!=null?rsO.getString(23):"";
+            double oCustAmt=rsO.getDouble(24);
+            String oCm=rsO.getString(25)!=null?rsO.getString(25):"";
+            // New values
+            String nPnr=pnr!=null?pnr.trim():""; String nBDate=bookingDate!=null?bookingDate:"";
+            String nOwDate=onewayDate!=null?onewayDate:""; String nOwTime=onewayTime!=null?onewayTime:"";
+            String nOwFlt=onewayFlightNo!=null?onewayFlightNo.trim():""; String nOwAir=onewayAirlines!=null?onewayAirlines.trim():"";
+            String nRetDate=returnDate!=null?returnDate:""; String nRetTime=returnTime!=null?returnTime:"";
+            String nRetFlt=returnFlightNo!=null?returnFlightNo.trim():""; String nRetAir=returnAirlines!=null?returnAirlines.trim():"";
+            String nPhone=phone!=null?phone.trim():""; String nCustN=customerName!=null?customerName.trim():"";
+            double nBuyAmt=buyAmount!=null?buyAmount:0; double nSellAmt=sellAmount!=null?sellAmount:0; double nCustAmt=customerAmount!=null?customerAmount:0;
+            // Compare & append
+            if(!oPnr.equals(nPnr))             _cd.append("PNR: ").append(oPnr).append(" → ").append(nPnr).append("\n");
+            if(!oBDate.equals(nBDate))          _cd.append("Booking Date: ").append(oBDate).append(" → ").append(nBDate).append("\n");
+            if(!oOwDate.equals(nOwDate))        _cd.append("Travel Date: ").append(oOwDate).append(" → ").append(nOwDate).append("\n");
+            if(!oOwTime.equals(nOwTime))        _cd.append("Travel Time: ").append(oOwTime).append(" → ").append(nOwTime).append("\n");
+            if(!oOwf.equals(nOwf))              _cd.append("From: ").append(oOwf).append(" → ").append(nOwf).append("\n");
+            if(!oOwt.equals(nOwt))              _cd.append("To: ").append(oOwt).append(" → ").append(nOwt).append("\n");
+            if(!oOwFlt.equals(nOwFlt))          _cd.append("Flight No: ").append(oOwFlt).append(" → ").append(nOwFlt).append("\n");
+            if(!oOwAir.equals(nOwAir))          _cd.append("Airlines: ").append(oOwAir).append(" → ").append(nOwAir).append("\n");
+            if(!oRetDate.equals(nRetDate))      _cd.append("Return Date: ").append(oRetDate).append(" → ").append(nRetDate).append("\n");
+            if(!oRetTime.equals(nRetTime))      _cd.append("Return Time: ").append(oRetTime).append(" → ").append(nRetTime).append("\n");
+            if(!oRtf.equals(nRtf))              _cd.append("Ret From: ").append(oRtf).append(" → ").append(nRtf).append("\n");
+            if(!oRtt.equals(nRtt))              _cd.append("Ret To: ").append(oRtt).append(" → ").append(nRtt).append("\n");
+            if(!oRetFlt.equals(nRetFlt))        _cd.append("Ret Flight: ").append(oRetFlt).append(" → ").append(nRetFlt).append("\n");
+            if(!oRetAir.equals(nRetAir))        _cd.append("Ret Airlines: ").append(oRetAir).append(" → ").append(nRetAir).append("\n");
+            if(oSeats!=noOfSeats)               _cd.append("Seats: ").append(oSeats).append(" → ").append(noOfSeats).append("\n");
+            if(!oPhone.equals(nPhone))          _cd.append("Phone: ").append(oPhone).append(" → ").append(nPhone).append("\n");
+            if(!oBa.equals(nBa))                _cd.append("Buy Agent: ").append(oBa).append(" → ").append(nBa).append("\n");
+            if(Math.abs(oBuyAmt-nBuyAmt)>0.005) _cd.append("Buy Amt: ").append(String.format("%.2f",oBuyAmt)).append(" → ").append(String.format("%.2f",nBuyAmt)).append("\n");
+            if(!oBm.equals(nBm))                _cd.append("Buy Mode: ").append(oBm).append(" → ").append(nBm).append("\n");
+            if(!oSa.equals(nSa))                _cd.append("Sell Agent: ").append(oSa).append(" → ").append(nSa).append("\n");
+            if(Math.abs(oSellAmt-nSellAmt)>0.005) _cd.append("Sell Amt: ").append(String.format("%.2f",oSellAmt)).append(" → ").append(String.format("%.2f",nSellAmt)).append("\n");
+            if(!oSm.equals(nSm))                _cd.append("Sell Mode: ").append(oSm).append(" → ").append(nSm).append("\n");
+            if(!oCustN.equals(nCustN))          _cd.append("Customer: ").append(oCustN).append(" → ").append(nCustN).append("\n");
+            if(Math.abs(oCustAmt-nCustAmt)>0.005) _cd.append("Cust Amt: ").append(String.format("%.2f",oCustAmt)).append(" → ").append(String.format("%.2f",nCustAmt)).append("\n");
+            if(!oCm.equals(nCm))                _cd.append("Cust Mode: ").append(oCm).append(" → ").append(nCm).append("\n");
+        }
+        rsO.close(); ptO.close();
+        String _descStr = _cd.toString().trim();
+
+        // 1. Update booking header
+        pt = con.prepareStatement(
+            "UPDATE ticket_booking SET" +
+            " pnr=?, booking_date=?," +
+            " oneway_travel_date=?, oneway_travel_time=?, oneway_from_id=?, oneway_to_id=?," +
+            " oneway_flight_no=?, oneway_airlines=?," +
+            " return_travel_date=?, return_travel_time=?, return_from_id=?, return_to_id=?," +
+            " return_flight_no=?, return_airlines=?," +
+            " no_of_seats=?, phone=?," +
+            " buy_agent_id=?, buy_amount=?, buy_payment_mode_id=?," +
+            " sell_agent_id=?, sell_amount=?, sell_payment_mode_id=?," +
+            " customer_name=?, customer_amount=?, customer_payment_mode_id=?" +
+            " WHERE id=?");
+        pt.setString(1, pnr);
+        pt.setString(2, bookingDate);
+        pt.setString(3, (onewayDate!=null&&!onewayDate.isEmpty()) ? onewayDate : null);
+        pt.setString(4, (onewayTime!=null&&!onewayTime.isEmpty()) ? onewayTime : null);
+        pt.setInt(5, onewayFromId);
+        pt.setInt(6, onewayToId);
+        pt.setString(7, (onewayFlightNo!=null&&!onewayFlightNo.isEmpty()) ? onewayFlightNo : null);
+        pt.setString(8, (onewayAirlines!=null&&!onewayAirlines.isEmpty()) ? onewayAirlines : null);
+        pt.setString(9, (returnDate!=null&&!returnDate.isEmpty()) ? returnDate : null);
+        pt.setString(10, (returnTime!=null&&!returnTime.isEmpty()) ? returnTime : null);
+        if (returnFromId!=null) pt.setInt(11, returnFromId); else pt.setNull(11, Types.INTEGER);
+        if (returnToId!=null)   pt.setInt(12, returnToId);   else pt.setNull(12, Types.INTEGER);
+        pt.setString(13, (returnFlightNo!=null&&!returnFlightNo.isEmpty()) ? returnFlightNo : null);
+        pt.setString(14, (returnAirlines!=null&&!returnAirlines.isEmpty()) ? returnAirlines : null);
+        pt.setInt(15, noOfSeats);
+        pt.setString(16, (phone!=null&&!phone.isEmpty()) ? phone : null);
+        if (buyAgentId!=null) pt.setInt(17, buyAgentId); else pt.setNull(17, Types.INTEGER);
+        if (buyAmount!=null)  pt.setDouble(18, buyAmount); else pt.setNull(18, Types.DOUBLE);
+        if (buyModeId!=null)  pt.setInt(19, buyModeId);   else pt.setNull(19, Types.INTEGER);
+        if (sellAgentId!=null) pt.setInt(20, sellAgentId); else pt.setNull(20, Types.INTEGER);
+        if (sellAmount!=null)  pt.setDouble(21, sellAmount); else pt.setNull(21, Types.DOUBLE);
+        if (sellModeId!=null)  pt.setInt(22, sellModeId);   else pt.setNull(22, Types.INTEGER);
+        pt.setString(23, (customerName!=null&&!customerName.isEmpty()) ? customerName : null);
+        if (customerAmount!=null) pt.setDouble(24, customerAmount); else pt.setNull(24, Types.DOUBLE);
+        if (custModeId!=null) pt.setInt(25, custModeId); else pt.setNull(25, Types.INTEGER);
+        pt.setInt(26, bookingId);
+        pt.executeUpdate(); pt.close();
+
+        // 1b. Update ledger bill_amount and payment_mode for each party
+        if (buyAgentId != null && buyAmount != null) {
+            pt = con.prepareStatement(
+                "UPDATE ticket_ledger SET bill_amount=?, payment_mode_id=? WHERE booking_id=? AND party_type='BUY_AGENT'");
+            pt.setDouble(1, buyAmount);
+            if (buyModeId != null) pt.setInt(2, buyModeId); else pt.setNull(2, Types.INTEGER);
+            pt.setInt(3, bookingId);
+            pt.executeUpdate(); pt.close();
+        }
+        if (sellAgentId != null && sellAmount != null) {
+            pt = con.prepareStatement(
+                "UPDATE ticket_ledger SET bill_amount=?, payment_mode_id=? WHERE booking_id=? AND party_type='SELL_AGENT'");
+            pt.setDouble(1, sellAmount);
+            if (sellModeId != null) pt.setInt(2, sellModeId); else pt.setNull(2, Types.INTEGER);
+            pt.setInt(3, bookingId);
+            pt.executeUpdate(); pt.close();
+        }
+        if (customerAmount != null) {
+            pt = con.prepareStatement(
+                "UPDATE ticket_ledger SET bill_amount=?, payment_mode_id=? WHERE booking_id=? AND party_type='CUSTOMER'");
+            pt.setDouble(1, customerAmount);
+            if (custModeId != null) pt.setInt(2, custModeId); else pt.setNull(2, Types.INTEGER);
+            pt.setInt(3, bookingId);
+            pt.executeUpdate(); pt.close();
+        }
+
+        // 2. Replace passengers
+        pt = con.prepareStatement("DELETE FROM ticket_passenger WHERE booking_id=?");
+        pt.setInt(1, bookingId); pt.executeUpdate(); pt.close();
+        if (passengerNames != null && passengerNames.length > 0) {
+            pt = con.prepareStatement(
+                "INSERT INTO ticket_passenger (booking_id, seat_no, passenger_name) VALUES (?,?,?)");
+            for (int i = 0; i < passengerNames.length; i++) {
+                String pn = (passengerNames[i]!=null) ? passengerNames[i].trim() : "";
+                pt.setInt(1, bookingId); pt.setInt(2, i+1); pt.setString(3, pn);
+                pt.addBatch();
+            }
+            pt.executeBatch(); pt.close();
+        }
+
+        // 3. Autocomplete lookups
+        if (onewayFlightNo!=null&&!onewayFlightNo.trim().isEmpty()) {
+            pt = con.prepareStatement("INSERT IGNORE INTO ticket_flightno (value) VALUES (?)");
+            pt.setString(1, onewayFlightNo.trim()); pt.executeUpdate(); pt.close();
+        }
+        if (onewayAirlines!=null&&!onewayAirlines.trim().isEmpty()) {
+            pt = con.prepareStatement("INSERT IGNORE INTO ticket_airline (value) VALUES (?)");
+            pt.setString(1, onewayAirlines.trim()); pt.executeUpdate(); pt.close();
+        }
+        if (returnFlightNo!=null&&!returnFlightNo.trim().isEmpty()) {
+            pt = con.prepareStatement("INSERT IGNORE INTO ticket_flightno (value) VALUES (?)");
+            pt.setString(1, returnFlightNo.trim()); pt.executeUpdate(); pt.close();
+        }
+        if (returnAirlines!=null&&!returnAirlines.trim().isEmpty()) {
+            pt = con.prepareStatement("INSERT IGNORE INTO ticket_airline (value) VALUES (?)");
+            pt.setString(1, returnAirlines.trim()); pt.executeUpdate(); pt.close();
+        }
+
+        // 4. Fetch ticket_no / pnr for log
+        pt = con.prepareStatement("SELECT ticket_no, pnr FROM ticket_booking WHERE id=? LIMIT 1");
+        pt.setInt(1, bookingId);
+        ResultSet rs2 = pt.executeQuery();
+        String tktNo="", pnrVal="";
+        if (rs2.next()) { tktNo=rs2.getString(1)!=null?rs2.getString(1):""; pnrVal=rs2.getString(2)!=null?rs2.getString(2):""; }
+        rs2.close(); pt.close();
+
+        // 5. Fetch user name for log
+        pt = con.prepareStatement("SELECT fullName FROM users WHERE id=? LIMIT 1");
+        pt.setInt(1, updatedBy);
+        ResultSet rsn = pt.executeQuery();
+        String uname = rsn.next() ? (rsn.getString(1)!=null?rsn.getString(1):"") : "";
+        rsn.close(); pt.close();
+
+        // 6. Insert audit log
+        pt = con.prepareStatement(
+            "INSERT INTO ticket_booking_log (booking_id,ticket_no,pnr,action_type,changed_by,user_name,change_date,change_time,remarks,description) VALUES (?,?,?,?,?,?,?,?,?,?)");
+        pt.setInt(1, bookingId); pt.setString(2, tktNo); pt.setString(3, pnrVal);
+        pt.setString(4, "EDIT"); pt.setInt(5, updatedBy); pt.setString(6, uname);
+        pt.setString(7, today); pt.setString(8, now);
+        pt.setString(9, remarks!=null?remarks:"");
+        if (_descStr.isEmpty()) pt.setNull(10, Types.VARCHAR); else pt.setString(10, _descStr);
+        pt.executeUpdate(); pt.close();
+
+        con.commit();
+    } catch (Exception e) {
+        if (con!=null) try { con.rollback(); } catch (SQLException ex) {}
+        throw e;
+    } finally {
+        if (pt!=null)  try { pt.close();  } catch (Exception e) {}
+        if (con!=null) try { con.setAutoCommit(true); } catch (Exception e) {}
+        if (con!=null) try { con.close(); } catch (Exception e) {}
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CANCEL TICKET BOOKING  –  soft-cancel + audit log
+// ─────────────────────────────────────────────────────────────────────────────
+public void cancelTicketBooking(int bookingId, int cancelledBy, String reason) throws Exception {
+    Connection con = null; PreparedStatement pt = null;
+    String today = new java.text.SimpleDateFormat("yyyy-MM-dd").format(new java.util.Date());
+    String now   = new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date());
+    try {
+        con = util.DBConnectionManager.getConnectionFromPool();
+        con.setAutoCommit(false);
+
+        pt = con.prepareStatement("UPDATE ticket_booking SET is_cancelled=1 WHERE id=?");
+        pt.setInt(1, bookingId); pt.executeUpdate(); pt.close();
+
+        pt = con.prepareStatement("SELECT ticket_no, pnr FROM ticket_booking WHERE id=? LIMIT 1");
+        pt.setInt(1, bookingId);
+        ResultSet rs2 = pt.executeQuery();
+        String tktNo="", pnrVal="";
+        if (rs2.next()) { tktNo=rs2.getString(1)!=null?rs2.getString(1):""; pnrVal=rs2.getString(2)!=null?rs2.getString(2):""; }
+        rs2.close(); pt.close();
+
+        pt = con.prepareStatement("SELECT fullName FROM users WHERE id=? LIMIT 1");
+        pt.setInt(1, cancelledBy);
+        ResultSet rsn = pt.executeQuery();
+        String uname = rsn.next() ? (rsn.getString(1)!=null?rsn.getString(1):"") : "";
+        rsn.close(); pt.close();
+
+        pt = con.prepareStatement(
+            "INSERT INTO ticket_booking_log (booking_id,ticket_no,pnr,action_type,changed_by,user_name,change_date,change_time,remarks) VALUES (?,?,?,?,?,?,?,?,?)");
+        pt.setInt(1, bookingId); pt.setString(2, tktNo); pt.setString(3, pnrVal);
+        pt.setString(4, "CANCEL"); pt.setInt(5, cancelledBy); pt.setString(6, uname);
+        pt.setString(7, today); pt.setString(8, now);
+        pt.setString(9, reason!=null?reason:"");
+        pt.executeUpdate(); pt.close();
+
+        con.commit();
+    } catch (Exception e) {
+        if (con!=null) try { con.rollback(); } catch (SQLException ex) {}
+        throw e;
+    } finally {
+        if (pt!=null)  try { pt.close();  } catch (Exception e) {}
+        if (con!=null) try { con.setAutoCommit(true); } catch (Exception e) {}
+        if (con!=null) try { con.close(); } catch (Exception e) {}
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET BOOKING LOGS  –  for edit/cancel report
+// Row: [0]id [1]booking_id [2]ticket_no [3]pnr [4]action_type
+//      [5]user_name [6]change_date [7]change_time [8]remarks
+// ─────────────────────────────────────────────────────────────────────────────
+public Vector getBookingLogs(String fromDate, String toDate) {
+    Vector result = new Vector();
+    Connection con = null; PreparedStatement pt = null; ResultSet rs = null;
+    try {
+        con = util.DBConnectionManager.getConnectionFromPool();
+        pt = con.prepareStatement(
+            "SELECT id, booking_id, ticket_no, pnr, action_type, user_name, change_date, change_time, remarks, description" +
+            " FROM ticket_booking_log WHERE change_date BETWEEN ? AND ? ORDER BY id DESC");
+        pt.setString(1, fromDate); pt.setString(2, toDate);
+        rs = pt.executeQuery();
+        while (rs.next()) {
+            Vector row = new Vector();
+            for (int i = 1; i <= rs.getMetaData().getColumnCount(); i++) row.add(rs.getObject(i));
+            result.add(row);
+        }
+    } catch (Exception e) { e.printStackTrace(); }
+    finally {
+        try { if (rs!=null) rs.close(); } catch (Exception e) {}
+        try { if (pt!=null) pt.close(); } catch (Exception e) {}
+        try { if (con!=null) con.close(); } catch (Exception e) {}
+    }
+    return result;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GET TICKET BY ID  –  identical columns to getPNRDetails but keyed by b.id
 // ─────────────────────────────────────────────────────────────────────────────
 public Vector getTicketById(int id) {
@@ -6485,7 +7021,7 @@ public Vector getTicketById(int id) {
             " LEFT JOIN ticket_payment_mode sm ON sm.id = b.sell_payment_mode_id" +
             " LEFT JOIN ticket_payment_mode cm ON cm.id = b.customer_payment_mode_id" +
             " WHERE b.id = ? LIMIT 1";  // ticket_no appended
-        sql = sql.replace("b.created_at", "b.created_at, b.ticket_no, COALESCE(b.sell_paid_amount, b.sell_amount, 0) AS sell_paid, COALESCE(b.cust_paid_amount, b.customer_amount, 0) AS cust_paid");
+        sql = sql.replace("b.created_at", "b.created_at, b.ticket_no, COALESCE(b.sell_paid_amount, 0) AS sell_paid, COALESCE(b.cust_paid_amount, 0) AS cust_paid");
         pt = con.prepareStatement(sql);
         pt.setInt(1, id);
         rs = pt.executeQuery();
@@ -6540,7 +7076,7 @@ public Vector getTicketReport(String dateType, String fromDate, String toDate, i
             " LEFT JOIN ticket_payment_mode bm ON bm.id = b.buy_payment_mode_id" +
             " LEFT JOIN ticket_payment_mode sm ON sm.id = b.sell_payment_mode_id" +
             " LEFT JOIN ticket_payment_mode cm ON cm.id = b.customer_payment_mode_id" +
-            " WHERE " + dateCol + " BETWEEN ? AND ?" + modeFilter +
+            " WHERE " + dateCol + " BETWEEN ? AND ? AND COALESCE(b.is_cancelled,0)=0" + modeFilter +
             " ORDER BY b.booking_date ASC";
         pt = con.prepareStatement(sql);
         pt.setString(1, fromDate);
@@ -6594,11 +7130,15 @@ public Vector getTicketLedgerReport(String fromDate, String toDate, int agentId)
             " SUM(COALESCE(l.amount,0)) AS total_paid," +
             " SUM(COALESCE(l.bill_amount,0)) - SUM(COALESCE(l.amount,0)) AS balance," +
             " MIN(l.transaction_date) AS first_date," +
-            " l.agent_id, l.party_name" +
+            " l.agent_id, l.party_name," +
+            " MAX(COALESCE(pm.modes,'')) AS payment_mode_name," +
+            " MAX(COALESCE(l.transaction_no,'')) AS last_txn_no" +
             " FROM ticket_ledger l" +
             " JOIN ticket_booking b ON b.id = l.booking_id" +
             " LEFT JOIN ticket_agent a ON a.id = l.agent_id" +
+            " LEFT JOIN ticket_payment_mode pm ON pm.id = l.payment_mode_id" +
             " WHERE l.transaction_date BETWEEN ? AND ?" +
+            " AND COALESCE(b.is_cancelled,0) = 0" +
             (agentId > 0 ? " AND l.agent_id = ?" : "") +
             " GROUP BY l.booking_id, l.party_type, l.transaction_type, l.agent_id, l.party_name, b.ticket_no, b.pnr, a.name" +
             " ORDER BY MIN(l.transaction_date) DESC, l.booking_id DESC";
@@ -6623,20 +7163,122 @@ public Vector getTicketLedgerReport(String fromDate, String toDate, int agentId)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// COLLECTION REPORT  — Sell to Customer + Sell to Agent ledger (with balance collections)
+// Row layout: [0]booking_id [1]ticket_no [2]pnr [3]party_type [4]party_display
+//             [5]txn_type   [6]total_bill [7]total_paid [8]balance
+//             [9]first_date [10]agent_id [11]party_name [12]ow_from [13]ow_to [14]booking_date
+// partyTypeFilter: "" = both CUSTOMER+SELL_AGENT, "CUSTOMER", or "SELL_AGENT"
+// agentId: 0 = all agents
+// ─────────────────────────────────────────────────────────────────────────────
+public Vector getCollectionReport(String fromDate, String toDate, int agentId, String partyTypeFilter) {
+    Vector result = new Vector();
+    Connection con = null; PreparedStatement pt = null; ResultSet rs = null;
+    try {
+        con = util.DBConnectionManager.getConnectionFromPool();
+        String ptFilter;
+        if ("CUSTOMER".equals(partyTypeFilter))   ptFilter = " AND l.party_type = 'CUSTOMER'";
+        else if ("SELL_AGENT".equals(partyTypeFilter)) ptFilter = " AND l.party_type = 'SELL_AGENT'";
+        else                                          ptFilter = " AND l.party_type IN ('CUSTOMER','SELL_AGENT')";
+        String agFilter = (agentId > 0) ? " AND l.agent_id = ?" : "";
+        String sql =
+            "SELECT l.booking_id, b.ticket_no, b.pnr, l.party_type," +
+            " COALESCE(a.name, l.party_name) AS party_display," +
+            " l.transaction_type," +
+            " SUM(COALESCE(l.bill_amount,0)) AS total_bill," +
+            " SUM(COALESCE(l.amount,0)) AS total_paid," +
+            " SUM(COALESCE(l.bill_amount,0)) - SUM(COALESCE(l.amount,0)) AS balance," +
+            " MIN(l.transaction_date) AS first_date, l.agent_id, l.party_name," +
+            " COALESCE(cf.name,'') AS ow_from, COALESCE(ct.name,'') AS ow_to, b.booking_date" +
+            " FROM ticket_ledger l" +
+            " JOIN ticket_booking b ON b.id = l.booking_id" +
+            " LEFT JOIN ticket_agent a ON a.id = l.agent_id" +
+            " LEFT JOIN ticket_city cf ON cf.id = b.oneway_from_id" +
+            " LEFT JOIN ticket_city ct ON ct.id = b.oneway_to_id" +
+            " WHERE l.transaction_date BETWEEN ? AND ?" + ptFilter + agFilter +
+            " GROUP BY l.booking_id, l.party_type, l.transaction_type, l.agent_id, l.party_name," +
+            " b.ticket_no, b.pnr, a.name, cf.name, ct.name, b.booking_date" +
+            " ORDER BY MIN(l.transaction_date) DESC, l.booking_id DESC";
+        pt = con.prepareStatement(sql);
+        pt.setString(1, fromDate);
+        pt.setString(2, toDate);
+        if (agentId > 0) pt.setInt(3, agentId);
+        rs = pt.executeQuery();
+        while (rs.next()) {
+            Vector row = new Vector();
+            for (int i = 1; i <= rs.getMetaData().getColumnCount(); i++) row.add(rs.getObject(i));
+            result.add(row);
+        }
+    } catch (Exception e) { e.printStackTrace(); }
+    finally {
+        if (rs  != null) try { rs.close();  } catch (Exception e) { ; }
+        if (pt  != null) try { pt.close();  } catch (Exception e) { ; }
+        if (con != null) try { con.close(); } catch (Exception e) { ; }
+    }
+    return result;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AGENT PAID REPORT  — Buy from Agent ledger (what we paid/owe to agents)
+// Row layout: same as getCollectionReport above
+// ─────────────────────────────────────────────────────────────────────────────
+public Vector getAgentPaidReport(String fromDate, String toDate, int agentId) {
+    Vector result = new Vector();
+    Connection con = null; PreparedStatement pt = null; ResultSet rs = null;
+    try {
+        con = util.DBConnectionManager.getConnectionFromPool();
+        String agFilter = (agentId > 0) ? " AND l.agent_id = ?" : "";
+        String sql =
+            "SELECT l.booking_id, b.ticket_no, b.pnr, l.party_type," +
+            " COALESCE(a.name, l.party_name) AS party_display," +
+            " l.transaction_type," +
+            " SUM(COALESCE(l.bill_amount,0)) AS total_bill," +
+            " SUM(COALESCE(l.amount,0)) AS total_paid," +
+            " SUM(COALESCE(l.bill_amount,0)) - SUM(COALESCE(l.amount,0)) AS balance," +
+            " MIN(l.transaction_date) AS first_date, l.agent_id, l.party_name," +
+            " COALESCE(cf.name,'') AS ow_from, COALESCE(ct.name,'') AS ow_to, b.booking_date" +
+            " FROM ticket_ledger l" +
+            " JOIN ticket_booking b ON b.id = l.booking_id" +
+            " LEFT JOIN ticket_agent a ON a.id = l.agent_id" +
+            " LEFT JOIN ticket_city cf ON cf.id = b.oneway_from_id" +
+            " LEFT JOIN ticket_city ct ON ct.id = b.oneway_to_id" +
+            " WHERE l.party_type = 'BUY_AGENT' AND l.transaction_date BETWEEN ? AND ?" + agFilter +
+            " GROUP BY l.booking_id, l.party_type, l.transaction_type, l.agent_id, l.party_name," +
+            " b.ticket_no, b.pnr, a.name, cf.name, ct.name, b.booking_date" +
+            " ORDER BY MIN(l.transaction_date) DESC, l.booking_id DESC";
+        pt = con.prepareStatement(sql);
+        pt.setString(1, fromDate);
+        pt.setString(2, toDate);
+        if (agentId > 0) pt.setInt(3, agentId);
+        rs = pt.executeQuery();
+        while (rs.next()) {
+            Vector row = new Vector();
+            for (int i = 1; i <= rs.getMetaData().getColumnCount(); i++) row.add(rs.getObject(i));
+            result.add(row);
+        }
+    } catch (Exception e) { e.printStackTrace(); }
+    finally {
+        if (rs  != null) try { rs.close();  } catch (Exception e) { ; }
+        if (pt  != null) try { pt.close();  } catch (Exception e) { ; }
+        if (con != null) try { con.close(); } catch (Exception e) { ; }
+    }
+    return result;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // COLLECT BALANCE — insert a balance-collection entry into ticket_ledger
 // Returns "SUCCESS" or "ERROR:message"
 // ─────────────────────────────────────────────────────────────────────────────
 public String collectTicketBalance(int bookingId, String partyType, Integer agentId,
         String partyName, String txnType, double collectedAmount,
-        Integer paymentModeId, String collectionDate) {
+        Integer paymentModeId, String collectionDate, String transactionNo) {
     Connection con = null; PreparedStatement pt = null;
     try {
         con = util.DBConnectionManager.getConnectionFromPool();
         con.setAutoCommit(false);
         String sql =
             "INSERT INTO ticket_ledger " +
-            "(booking_id, party_type, agent_id, party_name, transaction_type, bill_amount, amount, payment_mode_id, remarks, transaction_date) " +
-            "VALUES (?,?,?,?,?,0,?,?,?,?)";
+            "(booking_id, party_type, agent_id, party_name, transaction_type, bill_amount, amount, payment_mode_id, transaction_no, remarks, transaction_date) " +
+            "VALUES (?,?,?,?,?,0,?,?,?,?,?)";
         pt = con.prepareStatement(sql);
         pt.setInt(1, bookingId);
         pt.setString(2, partyType);
@@ -6647,8 +7289,10 @@ public String collectTicketBalance(int bookingId, String partyType, Integer agen
         pt.setString(5, txnType);
         pt.setDouble(6, collectedAmount);
         if (paymentModeId != null) pt.setInt(7, paymentModeId); else pt.setNull(7, Types.INTEGER);
-        pt.setString(8, "Balance collection");
-        pt.setString(9, collectionDate);
+        String tnStr = (transactionNo != null && !transactionNo.trim().isEmpty()) ? transactionNo.trim() : null;
+        if (tnStr != null) pt.setString(8, tnStr); else pt.setNull(8, Types.VARCHAR);
+        pt.setString(9, "Balance collection");
+        pt.setString(10, collectionDate);
         int rows = pt.executeUpdate();
         if (rows == 0) throw new Exception("No rows inserted");
         con.commit();
@@ -6661,6 +7305,105 @@ public String collectTicketBalance(int bookingId, String partyType, Integer agen
         if (pt  != null) try { pt.close();  } catch (Exception e) { ; }
         if (con != null) try { con.setAutoCommit(true); con.close(); } catch (Exception e) { ; }
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TICKET PAYMENTS DETAIL — individual ledger rows (un-grouped) for collection
+// and agent paid reports. Shows each payment entry separately.
+// partyTypeScope: "SELL" = SELL_AGENT+CUSTOMER, "BUY" = BUY_AGENT,
+//                "SELL_AGENT" or "CUSTOMER" for specific type
+// Row: [0]ledger_id [1]booking_id [2]ticket_no [3]pnr [4]party_type
+//      [5]party_display [6]txn_type [7]bill_amount [8]amount_paid
+//      [9]payment_mode [10]transaction_no [11]txn_date
+//      [12]ow_from [13]ow_to [14]agent_id [15]party_name [16]booking_date
+// ─────────────────────────────────────────────────────────────────────────────
+public Vector getTicketPaymentsDetail(String fromDate, String toDate, int agentId, String partyTypeScope) {
+    Vector result = new Vector();
+    Connection con = null; PreparedStatement pt = null; ResultSet rs = null;
+    try {
+        con = util.DBConnectionManager.getConnectionFromPool();
+        String ptFilter;
+        if ("BUY".equals(partyTypeScope) || "BUY_AGENT".equals(partyTypeScope))
+            ptFilter = " AND l.party_type = 'BUY_AGENT'";
+        else if ("SELL_AGENT".equals(partyTypeScope))
+            ptFilter = " AND l.party_type = 'SELL_AGENT'";
+        else if ("CUSTOMER".equals(partyTypeScope))
+            ptFilter = " AND l.party_type = 'CUSTOMER'";
+        else
+            ptFilter = " AND l.party_type IN ('SELL_AGENT','CUSTOMER')";
+        String agFilter = (agentId > 0) ? " AND l.agent_id = ?" : "";
+        String sql =
+            "SELECT l.id, l.booking_id, COALESCE(b.ticket_no,'-'), COALESCE(b.pnr,'-')," +
+            " l.party_type, COALESCE(ta.name, l.party_name, '-') AS party_display," +
+            " l.transaction_type, COALESCE(l.bill_amount,0), COALESCE(l.amount,0)," +
+            " COALESCE(pm.modes,'-') AS payment_mode, COALESCE(l.transaction_no,'') AS txn_no," +
+            " l.transaction_date, COALESCE(cf.name,'') AS ow_from, COALESCE(ct.name,'') AS ow_to," +
+            " COALESCE(l.agent_id,0), COALESCE(l.party_name,''), b.booking_date" +
+            " FROM ticket_ledger l" +
+            " JOIN ticket_booking b ON b.id = l.booking_id" +
+            " LEFT JOIN ticket_agent ta ON ta.id = l.agent_id" +
+            " LEFT JOIN ticket_payment_mode pm ON pm.id = l.payment_mode_id" +
+            " LEFT JOIN ticket_city cf ON cf.id = b.oneway_from_id" +
+            " LEFT JOIN ticket_city ct ON ct.id = b.oneway_to_id" +
+            " WHERE l.transaction_date BETWEEN ? AND ? AND COALESCE(b.is_cancelled,0)=0" + ptFilter + agFilter +
+            " ORDER BY l.transaction_date DESC, l.booking_id DESC, l.id ASC";
+        pt = con.prepareStatement(sql);
+        pt.setString(1, fromDate);
+        pt.setString(2, toDate);
+        if (agentId > 0) pt.setInt(3, agentId);
+        rs = pt.executeQuery();
+        while (rs.next()) {
+            Vector row = new Vector();
+            for (int i = 1; i <= rs.getMetaData().getColumnCount(); i++) row.add(rs.getObject(i));
+            result.add(row);
+        }
+    } catch (Exception e) { e.printStackTrace(); }
+    finally {
+        if (rs  != null) try { rs.close();  } catch (Exception e) { ; }
+        if (pt  != null) try { pt.close();  } catch (Exception e) { ; }
+        if (con != null) try { con.close(); } catch (Exception e) { ; }
+    }
+    return result;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TICKET LEDGER BY BOOKING ID — all payment entries for a specific booking
+// Used by pnrEnquiry to show full payment history.
+// Row: [0]id [1]party_type [2]party_display [3]txn_type
+//      [4]bill_amount [5]amount [6]payment_mode [7]txn_no
+//      [8]txn_date [9]remarks
+// ─────────────────────────────────────────────────────────────────────────────
+public Vector getTicketLedgerByBookingId(int bookingId) {
+    Vector result = new Vector();
+    Connection con = null; PreparedStatement pt = null; ResultSet rs = null;
+    try {
+        con = util.DBConnectionManager.getConnectionFromPool();
+        String sql =
+            "SELECT l.id, l.party_type," +
+            " COALESCE(ta.name, l.party_name, '-') AS party_display," +
+            " l.transaction_type, COALESCE(l.bill_amount,0), COALESCE(l.amount,0)," +
+            " COALESCE(pm.modes,'-') AS payment_mode, COALESCE(l.transaction_no,'') AS txn_no," +
+            " l.transaction_date, COALESCE(l.remarks,'')" +
+            " FROM ticket_ledger l" +
+            " LEFT JOIN ticket_agent ta ON ta.id = l.agent_id" +
+            " LEFT JOIN ticket_payment_mode pm ON pm.id = l.payment_mode_id" +
+            " WHERE l.booking_id = ?" +
+            " ORDER BY l.id ASC";
+        pt = con.prepareStatement(sql);
+        pt.setInt(1, bookingId);
+        rs = pt.executeQuery();
+        while (rs.next()) {
+            Vector row = new Vector();
+            for (int i = 1; i <= rs.getMetaData().getColumnCount(); i++) row.add(rs.getObject(i));
+            result.add(row);
+        }
+    } catch (Exception e) { e.printStackTrace(); }
+    finally {
+        if (rs  != null) try { rs.close();  } catch (Exception e) { ; }
+        if (pt  != null) try { pt.close();  } catch (Exception e) { ; }
+        if (con != null) try { con.close(); } catch (Exception e) { ; }
+    }
+    return result;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -6691,6 +7434,7 @@ public Vector getAgentStatement(String fromDate, String toDate, int agentId) {
             " a.name AS agent_name" +
             " FROM ticket_ledger l LEFT JOIN ticket_agent a ON a.id = l.agent_id" +
             " WHERE l.agent_id = ? AND DATE(l.transaction_date) < ?" +
+            " AND EXISTS (SELECT 1 FROM ticket_booking bc WHERE bc.id=l.booking_id AND COALESCE(bc.is_cancelled,0)=0)" +
             " GROUP BY a.name");
         pt.setInt(1, agentId);
         pt.setString(2, fromDate);
@@ -6748,6 +7492,7 @@ public Vector getAgentStatement(String fromDate, String toDate, int agentId) {
             " LEFT JOIN (SELECT booking_id, GROUP_CONCAT(passenger_name ORDER BY id SEPARATOR '||') AS passengers" +
             "            FROM ticket_passenger GROUP BY booking_id) pax ON pax.booking_id = b.id" +
             " WHERE l.agent_id = ? AND DATE(l.transaction_date) BETWEEN ? AND ?" +
+            " AND COALESCE(b.is_cancelled,0)=0" +
             " ORDER BY l.transaction_date ASC, l.id ASC";
         pt = con.prepareStatement(sql);
         pt.setInt(1, agentId);
@@ -6898,7 +7643,7 @@ public Map<String,Object> getTicketDashboardStats(int year, int month) {
             "SELECT COUNT(*) AS cnt," +
             " SUM(COALESCE(sell_amount,0)+COALESCE(customer_amount,0)) AS sell," +
             " IFNULL(SUM(buy_amount),0) AS buy" +
-            " FROM ticket_booking WHERE DATE(booking_date)=CURDATE()");
+            " FROM ticket_booking WHERE DATE(booking_date)=CURDATE() AND COALESCE(is_cancelled,0)=0");
         rs = pt.executeQuery();
         if (rs.next()) {
             stats.put("todayCount", rs.getInt("cnt"));
@@ -6915,7 +7660,7 @@ public Map<String,Object> getTicketDashboardStats(int year, int month) {
             " SUM(COALESCE(sell_amount,0)+COALESCE(customer_amount,0)) AS sell," +
             " IFNULL(SUM(buy_amount),0) AS buy" +
             " FROM ticket_booking" +
-            " WHERE MONTH(booking_date)=? AND YEAR(booking_date)=?");
+            " WHERE MONTH(booking_date)=? AND YEAR(booking_date)=? AND COALESCE(is_cancelled,0)=0");
         pt.setInt(1, month); pt.setInt(2, year);
         rs = pt.executeQuery();
         if (rs.next()) {
@@ -6933,7 +7678,8 @@ public Map<String,Object> getTicketDashboardStats(int year, int month) {
             "  WHEN COALESCE(bill_amount,0)>0 AND transaction_type='CR' THEN -(bill_amount-amount)" +
             "  WHEN COALESCE(bill_amount,0)<=0 AND transaction_type='DR' THEN -amount" +
             "  WHEN COALESCE(bill_amount,0)<=0 AND transaction_type='CR' THEN amount" +
-            "  ELSE 0 END),0) AS outstanding FROM ticket_ledger");
+            "  ELSE 0 END),0) AS outstanding FROM ticket_ledger l" +
+            " JOIN ticket_booking b ON b.id=l.booking_id AND COALESCE(b.is_cancelled,0)=0");
         rs = pt.executeQuery();
         stats.put("totalOutstanding", rs.next() ? rs.getDouble("outstanding") : 0.0);
         rs.close(); pt.close();
@@ -6945,7 +7691,7 @@ public Map<String,Object> getTicketDashboardStats(int year, int month) {
             "  WHEN COALESCE(bill_amount,0)>0 AND transaction_type='CR' THEN -(bill_amount-amount)" +
             "  WHEN COALESCE(bill_amount,0)<=0 AND transaction_type='DR' THEN -amount" +
             "  WHEN COALESCE(bill_amount,0)<=0 AND transaction_type='CR' THEN amount" +
-            "  ELSE 0 END),0) AS outstanding FROM ticket_ledger WHERE agent_id IS NOT NULL");
+            "  ELSE 0 END),0) AS outstanding FROM ticket_ledger l JOIN ticket_booking b ON b.id=l.booking_id AND COALESCE(b.is_cancelled,0)=0 WHERE l.agent_id IS NOT NULL");
         rs = pt.executeQuery();
         stats.put("totalAgentOutstanding", rs.next() ? rs.getDouble("outstanding") : 0.0);
         rs.close(); pt.close();
@@ -6960,7 +7706,7 @@ public Map<String,Object> getTicketDashboardStats(int year, int month) {
             " FROM ticket_booking b" +
             " LEFT JOIN ticket_city cf ON cf.id=b.oneway_from_id" +
             " LEFT JOIN ticket_city ct ON ct.id=b.oneway_to_id" +
-            " WHERE MONTH(b.booking_date)=? AND YEAR(b.booking_date)=?" +
+            " WHERE MONTH(b.booking_date)=? AND YEAR(b.booking_date)=? AND COALESCE(b.is_cancelled,0)=0" +
             " ORDER BY b.booking_date DESC, b.id DESC LIMIT 100");
         pt.setInt(1, month); pt.setInt(2, year);
         rs = pt.executeQuery();
@@ -7001,7 +7747,7 @@ public Map<String,Object> getTicketDashboardStats(int year, int month) {
             " ) days" +
             " LEFT JOIN (" +
             "   SELECT DATE(booking_date) AS bdate, COUNT(id) AS cnt, SUM(COALESCE(sell_amount,0)+COALESCE(customer_amount,0)) AS sell" +
-            "   FROM ticket_booking WHERE booking_date BETWEEN ? AND ?" +
+            "   FROM ticket_booking WHERE booking_date BETWEEN ? AND ? AND COALESCE(is_cancelled,0)=0" +
             "   GROUP BY DATE(booking_date)" +
             " ) b ON b.bdate = days.d" +
             " WHERE days.d BETWEEN ? AND ?" +
@@ -7034,6 +7780,7 @@ public Map<String,Object> getTicketDashboardStats(int year, int month) {
             "  ELSE 0 END) AS outstanding" +
             " FROM ticket_ledger l" +
             " JOIN ticket_agent a ON a.id=l.agent_id" +
+            " JOIN ticket_booking b ON b.id=l.booking_id AND COALESCE(b.is_cancelled,0)=0" +
             " WHERE l.agent_id IS NOT NULL" +
             " GROUP BY l.agent_id, a.name" +
             " HAVING ABS(outstanding) > 0.005" +
