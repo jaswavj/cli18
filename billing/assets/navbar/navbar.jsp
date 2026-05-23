@@ -110,6 +110,45 @@ for (int i = 0; i < vecPer.size(); i++) {
       </div>
     </div>
   <% } %>
+<% if (permissions.contains(7)) { %>
+    <div class="sidebar-dropdown">
+      <a href="#" class="sidebar-item" data-bs-toggle="collapse" data-bs-target="#serviceBillMenu">
+        <i class="fas fa-file-invoice-dollar"></i>
+        <span>Service Bill</span>
+        <i class="fas fa-chevron-down ms-auto small"></i>
+      </a>
+      <div class="collapse sidebar-submenu" id="serviceBillMenu">
+        <a href="<%=request.getContextPath()%>/serviceBill/page.jsp" class="sidebar-subitem">
+          <i class="fa-solid fa-plus-circle" style="margin-right:5px;font-size:11px;"></i>New Bill
+        </a>
+        <a href="<%=request.getContextPath()%>/serviceBill/report.jsp" class="sidebar-subitem">
+          <i class="fa-solid fa-chart-bar" style="margin-right:5px;font-size:11px;"></i>Bill Report
+        </a>
+      </div>
+    </div>
+<% } %>
+<% if (permissions.contains(6)) { %>
+    <div class="sidebar-dropdown">
+      <a href="#" class="sidebar-item" data-bs-toggle="collapse" data-bs-target="#expenseMenu">
+        <i class="fas fa-wallet"></i>
+        <span>Expense</span>
+        <i class="fas fa-chevron-down ms-auto small"></i>
+      </a>
+      <div class="collapse sidebar-submenu" id="expenseMenu">
+        <a href="<%=request.getContextPath()%>/expense/expenseType/expenseType.jsp" class="sidebar-subitem">
+          <i class="fa-solid fa-tags" style="margin-right:5px;font-size:11px;"></i>Expense Type
+        </a>
+        <a href="<%=request.getContextPath()%>/expense/expenseEntry/page.jsp" class="sidebar-subitem">
+          <i class="fa-solid fa-pen-to-square" style="margin-right:5px;font-size:11px;"></i>Expense Entry
+        </a>
+        <a href="<%=request.getContextPath()%>/expense/expenseReport/page.jsp" class="sidebar-subitem">
+          <i class="fa-solid fa-chart-bar" style="margin-right:5px;font-size:11px;"></i>Expense Report
+        </a>
+      </div>
+    </div>
+<% } %>
+
+
 
 <% if (permissions.contains(5)) { %>
     <div class="sidebar-dropdown">

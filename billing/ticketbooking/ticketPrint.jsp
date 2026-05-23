@@ -371,6 +371,11 @@ body {
     </div>
   </div>
 
+  <!-- ═══ TICKET-RECEIPT LABEL ═══ -->
+  <div style="background:#1a2744;text-align:center;padding:2mm 0;border-top:1pt solid #c9922a;border-bottom:1pt solid #c9922a;">
+    <span style="color:#c9922a;font-size:10pt;font-weight:900;letter-spacing:2pt;text-transform:uppercase;">Ticket-Receipt</span>
+  </div>
+
   <!-- ═══ BOOKING INFO BAR ═══ -->
   <div class="tk-info-bar">
     <div class="tk-info-item">

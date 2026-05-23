@@ -7815,4 +7815,199 @@ public Map<String,Object> getTicketDashboardStats(int year, int month) {
     return stats;
 }
 
+// =============================================================================
+// SERVICE BILL METHODS
+// =============================================================================
+
+// ---------------------------------------------------------------------------
+// getNextServiceBillNo — returns next bill_no for current year, e.g. "26-1"
+// ---------------------------------------------------------------------------
+public String getNextServiceBillNo() {
+    Connection con = null; PreparedStatement pt = null; ResultSet rs = null;
+    try {
+        String yr = new java.text.SimpleDateFormat("yy").format(new java.util.Date());
+        con = util.DBConnectionManager.getConnectionFromPool();
+        pt = con.prepareStatement(
+            "SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(bill_no,'-',-1) AS UNSIGNED)),0)+1 " +
+            "FROM service_bill WHERE bill_no LIKE ?");
+        pt.setString(1, yr + "-%");
+        rs = pt.executeQuery();
+        int seq = 1;
+        if (rs.next()) seq = rs.getInt(1);
+        return yr + "-" + seq;
+    } catch (Exception e) {
+        e.printStackTrace();
+        return new java.text.SimpleDateFormat("yy").format(new java.util.Date()) + "-ERR";
+    } finally {
+        if (rs  != null) try { rs.close();  } catch (Exception e) { ; }
+        if (pt  != null) try { pt.close();  } catch (Exception e) { ; }
+        if (con != null) try { con.close(); } catch (Exception e) { ; }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// saveServiceBill — saves header + items in a transaction.
+// Returns new inserted id (>0) on success, or -1 on failure.
+// svcNames and svcCosts must be parallel arrays; null entries are skipped.
+// ---------------------------------------------------------------------------
+public int saveServiceBill(String billNo, String billDate, String customerName,
+        String phone, double subtotal, double discount, double totalAmount,
+        double paidAmount, double balance, Integer payModeId, String payModeName,
+        String description, int createdBy, String[] svcNames, String[] svcCosts) {
+    Connection con = null; PreparedStatement pt = null; ResultSet rs = null;
+    try {
+        con = util.DBConnectionManager.getConnectionFromPool();
+        con.setAutoCommit(false);
+
+        pt = con.prepareStatement(
+            "INSERT INTO service_bill " +
+            "(bill_no,bill_date,customer_name,phone,subtotal,discount,total_amount," +
+            "paid_amount,balance,pay_mode_id,pay_mode_name,description,created_by) " +
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            Statement.RETURN_GENERATED_KEYS);
+        pt.setString(1, billNo);
+        pt.setString(2, billDate);
+        pt.setString(3, customerName != null ? customerName.trim() : "");
+        pt.setString(4, phone != null ? phone.trim() : "");
+        pt.setDouble(5, subtotal);
+        pt.setDouble(6, discount);
+        pt.setDouble(7, totalAmount);
+        pt.setDouble(8, paidAmount);
+        pt.setDouble(9, balance);
+        if (payModeId != null && payModeId > 0) pt.setInt(10, payModeId);
+        else pt.setNull(10, Types.INTEGER);
+        pt.setString(11, payModeName != null ? payModeName.trim() : "");
+        pt.setString(12, description != null ? description.trim() : "");
+        pt.setInt(13, createdBy);
+        pt.executeUpdate();
+
+        rs = pt.getGeneratedKeys();
+        int newId = -1;
+        if (rs.next()) newId = rs.getInt(1);
+        rs.close(); pt.close();
+
+        if (newId > 0 && svcNames != null) {
+            pt = con.prepareStatement(
+                "INSERT INTO service_bill_items (bill_id,service_name,cost) VALUES (?,?,?)");
+            for (int i = 0; i < svcNames.length; i++) {
+                if (svcNames[i] == null || svcNames[i].trim().isEmpty()) continue;
+                double cost = 0;
+                if (svcCosts != null && i < svcCosts.length) {
+                    try { cost = Double.parseDouble(svcCosts[i]); } catch (Exception ex) { ; }
+                }
+                pt.setInt(1, newId);
+                pt.setString(2, svcNames[i].trim());
+                pt.setDouble(3, cost);
+                pt.addBatch();
+            }
+            pt.executeBatch();
+        }
+
+        con.commit();
+        return newId;
+    } catch (Exception e) {
+        if (con != null) try { con.rollback(); } catch (Exception ex) { ; }
+        e.printStackTrace();
+        return -1;
+    } finally {
+        if (rs  != null) try { rs.close();  } catch (Exception e) { ; }
+        if (pt  != null) try { pt.close();  } catch (Exception e) { ; }
+        if (con != null) try { con.setAutoCommit(true); con.close(); } catch (Exception e) { ; }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// getServiceBillById — returns bill header as a Vector.
+// Row: [0]bill_no [1]bill_date(dd-MM-yyyy) [2]customer_name [3]phone
+//      [4]subtotal [5]discount [6]total_amount [7]paid_amount [8]balance
+//      [9]pay_mode_name [10]description
+// Returns empty Vector if not found.
+// ---------------------------------------------------------------------------
+public Vector getServiceBillById(int billId) {
+    Vector vec = new Vector();
+    Connection con = null; PreparedStatement pt = null; ResultSet rs = null;
+    try {
+        con = util.DBConnectionManager.getConnectionFromPool();
+        pt = con.prepareStatement(
+            "SELECT bill_no, DATE_FORMAT(bill_date,'%d-%m-%Y'), customer_name, phone, " +
+            "subtotal, discount, total_amount, paid_amount, balance, " +
+            "COALESCE(pay_mode_name,''), COALESCE(description,'') " +
+            "FROM service_bill WHERE id=?");
+        pt.setInt(1, billId);
+        rs = pt.executeQuery();
+        if (rs.next()) {
+            for (int i = 1; i <= rs.getMetaData().getColumnCount(); i++)
+                vec.add(rs.getObject(i));
+        }
+    } catch (Exception e) { e.printStackTrace(); }
+    finally {
+        if (rs  != null) try { rs.close();  } catch (Exception e) { ; }
+        if (pt  != null) try { pt.close();  } catch (Exception e) { ; }
+        if (con != null) try { con.close(); } catch (Exception e) { ; }
+    }
+    return vec;
+}
+
+// ---------------------------------------------------------------------------
+// getServiceBillItems — returns items for a bill.
+// Each row: [0]service_name [1]cost
+// ---------------------------------------------------------------------------
+public Vector getServiceBillItems(int billId) {
+    Vector result = new Vector();
+    Connection con = null; PreparedStatement pt = null; ResultSet rs = null;
+    try {
+        con = util.DBConnectionManager.getConnectionFromPool();
+        pt = con.prepareStatement(
+            "SELECT service_name, cost FROM service_bill_items WHERE bill_id=? ORDER BY id");
+        pt.setInt(1, billId);
+        rs = pt.executeQuery();
+        while (rs.next()) {
+            Vector row = new Vector();
+            row.add(rs.getString(1));
+            row.add(rs.getDouble(2));
+            result.add(row);
+        }
+    } catch (Exception e) { e.printStackTrace(); }
+    finally {
+        if (rs  != null) try { rs.close();  } catch (Exception e) { ; }
+        if (pt  != null) try { pt.close();  } catch (Exception e) { ; }
+        if (con != null) try { con.close(); } catch (Exception e) { ; }
+    }
+    return result;
+}
+
+// ---------------------------------------------------------------------------
+// getServiceBillReport — returns bill list for date range.
+// Each row: [0]id [1]bill_no [2]bill_date(dd-MM-yyyy) [3]customer_name
+//           [4]phone [5]total_amount [6]paid_amount [7]balance [8]pay_mode_name
+// ---------------------------------------------------------------------------
+public Vector getServiceBillReport(String fromDate, String toDate) {
+    Vector result = new Vector();
+    Connection con = null; PreparedStatement pt = null; ResultSet rs = null;
+    try {
+        con = util.DBConnectionManager.getConnectionFromPool();
+        pt = con.prepareStatement(
+            "SELECT id, bill_no, DATE_FORMAT(bill_date,'%d-%m-%Y'), " +
+            "COALESCE(customer_name,''), COALESCE(phone,''), " +
+            "total_amount, paid_amount, balance, COALESCE(pay_mode_name,'') " +
+            "FROM service_bill " +
+            "WHERE bill_date BETWEEN ? AND ? " +
+            "ORDER BY bill_date DESC, id DESC");
+        pt.setString(1, fromDate);
+        pt.setString(2, toDate);
+        rs = pt.executeQuery();
+        while (rs.next()) {
+            Vector row = new Vector();
+            for (int i = 1; i <= rs.getMetaData().getColumnCount(); i++) row.add(rs.getObject(i));
+            result.add(row);
+        }
+    } catch (Exception e) { e.printStackTrace(); }
+    finally {
+        if (rs  != null) try { rs.close();  } catch (Exception e) { ; }
+        if (pt  != null) try { pt.close();  } catch (Exception e) { ; }
+        if (con != null) try { con.close(); } catch (Exception e) { ; }
+    }
+    return result;
+}
+
 }

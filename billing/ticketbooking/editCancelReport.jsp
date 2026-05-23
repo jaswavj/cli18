@@ -94,6 +94,31 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
 .change-pill .label{font-weight:700;color:#5c4d8a;margin-right:3px;}
 .change-pill .old{text-decoration:line-through;color:var(--red);opacity:.8;}
 .change-pill .nw{color:var(--green);font-weight:700;}
+
+/* Clickable row */
+.rpt-table tbody tr.has-desc{cursor:pointer;}
+.rpt-table tbody tr.has-desc:hover{background:#ede9f8;}
+
+/* Description Modal */
+.desc-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:3000;align-items:center;justify-content:center;}
+.desc-overlay.active{display:flex;}
+.desc-box{background:#fff;border-radius:var(--r);width:480px;max-width:95vw;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.28);overflow:hidden;}
+.desc-head{background:linear-gradient(135deg,var(--navy),var(--navy2));padding:12px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.desc-head-title{color:#fff;font-weight:800;font-size:13px;display:flex;align-items:center;gap:8px;}
+.desc-head-title i{color:var(--gold);}
+.desc-close{background:none;border:none;color:rgba(255,255,255,.7);font-size:20px;cursor:pointer;line-height:1;padding:0 2px;}
+.desc-close:hover{color:#fff;}
+.desc-meta{background:#f8fafc;border-bottom:1px solid var(--border-l);padding:8px 16px;display:flex;gap:16px;flex-wrap:wrap;flex-shrink:0;}
+.desc-meta-item{font-size:11px;color:var(--muted);}
+.desc-meta-item strong{color:var(--text);font-weight:700;}
+.desc-body{padding:14px 16px;overflow-y:auto;flex:1;}
+.desc-change-list{display:flex;flex-direction:column;gap:6px;}
+.desc-change-row{display:flex;align-items:center;gap:8px;padding:7px 10px;background:#f5f3fb;border-radius:5px;border:1px solid #e2dcf5;font-size:12px;}
+.desc-change-lbl{font-weight:800;color:#5c4d8a;min-width:90px;flex-shrink:0;}
+.desc-change-old{text-decoration:line-through;color:var(--red);opacity:.85;}
+.desc-change-arrow{color:#8b7bb5;font-size:10px;}
+.desc-change-new{color:var(--green);font-weight:700;}
+.desc-raw{font-size:12px;color:var(--text);white-space:pre-wrap;line-height:1.7;}
 </style>
 </head>
 <body>
@@ -169,8 +194,9 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
             String remarks = r.get(8)!=null?r.get(8).toString():"";
             String description = r.size()>9 && r.get(9)!=null ? r.get(9).toString() : "";
             boolean isCancel = "CANCEL".equals(action);
+            String descEsc = description.replace("\\","\\\\").replace("'","\\'").replace("\n","\\n").replace("\r","");
           %>
-          <tr>
+          <tr <%=!description.isEmpty()?"class='has-desc' onclick=\"showDesc('"+descEsc+"','"+(isCancel?"CANCEL":"EDIT")+"','"+ticketNo+"','"+pnrVal+"','"+chDate+" "+chTime+"')\"":""%>>
             <td class="sno"><%=i+1%></td>
             <td><%=chDate%></td>
             <td style="color:var(--muted);"><%=chTime%></td>
@@ -227,5 +253,62 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
     <%}%>
   </div>
 </div>
+
+<!-- DESCRIPTION MODAL -->
+<div class="desc-overlay" id="descModal" onclick="if(event.target===this)closeDesc()">
+  <div class="desc-box">
+    <div class="desc-head">
+      <div class="desc-head-title"><i class="fa-solid fa-clock-rotate-left"></i> <span id="descModalTitle">Change Details</span></div>
+      <button class="desc-close" onclick="closeDesc()">&times;</button>
+    </div>
+    <div class="desc-meta" id="descMeta"></div>
+    <div class="desc-body" id="descBody"></div>
+  </div>
+</div>
+
+<script>
+function showDesc(raw, action, tktNo, pnr, dt) {
+    document.getElementById('descModalTitle').textContent = action + ' — ' + tktNo;
+    var metaHtml = '';
+    if (tktNo && tktNo !== '—') metaHtml += '<div class="desc-meta-item">Ticket: <strong>' + escH(tktNo) + '</strong></div>';
+    if (pnr   && pnr   !== '—') metaHtml += '<div class="desc-meta-item">PNR: <strong>' + escH(pnr) + '</strong></div>';
+    if (dt) metaHtml += '<div class="desc-meta-item">Date: <strong>' + escH(dt.trim()) + '</strong></div>';
+    document.getElementById('descMeta').innerHTML = metaHtml;
+
+    var lines = raw.split('\n');
+    var hasArrow = lines.some(function(l){ return l.indexOf(' → ') >= 0; });
+    var html = '';
+    if (hasArrow) {
+        html = '<div class="desc-change-list">';
+        lines.forEach(function(line) {
+            line = line.trim(); if (!line) return;
+            var ci = line.indexOf(': ');
+            var lbl = ci >= 0 ? line.substring(0, ci) : '';
+            var rest = ci >= 0 ? line.substring(ci + 2) : line;
+            var ai = rest.indexOf(' → ');
+            var oldV = ai >= 0 ? rest.substring(0, ai) : rest;
+            var newV = ai >= 0 ? rest.substring(ai + 3) : '';
+            html += '<div class="desc-change-row">';
+            if (lbl) html += '<span class="desc-change-lbl">' + escH(lbl) + '</span>';
+            html += '<span class="desc-change-old">' + escH(oldV || '—') + '</span>';
+            html += '<i class="desc-change-arrow fa-solid fa-arrow-right"></i>';
+            html += '<span class="desc-change-new">' + escH(newV || '—') + '</span>';
+            html += '</div>';
+        });
+        html += '</div>';
+    } else {
+        html = '<pre class="desc-raw">' + escH(raw) + '</pre>';
+    }
+    document.getElementById('descBody').innerHTML = html;
+    document.getElementById('descModal').classList.add('active');
+}
+function closeDesc() {
+    document.getElementById('descModal').classList.remove('active');
+}
+function escH(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeDesc(); });
+</script>
 </body>
 </html>

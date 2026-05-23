@@ -12,15 +12,23 @@ SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
 String today    = sdf.format(new java.util.Date());
 String fromDate = request.getParameter("fromDate");
 String toDate   = request.getParameter("toDate");
-String agentIdP = request.getParameter("agentFilter");
-if (fromDate == null || fromDate.isEmpty()) fromDate = today;
-if (toDate   == null || toDate.isEmpty())   toDate   = today;
+String agentIdP  = request.getParameter("agentFilter");
+String txnFilter = request.getParameter("txnFilter");
+if (fromDate  == null || fromDate.isEmpty())  fromDate  = today;
+if (toDate    == null || toDate.isEmpty())    toDate    = today;
+if (txnFilter == null || txnFilter.isEmpty()) txnFilter = "";
 int agentFilterId = 0;
 try { if (agentIdP != null && !agentIdP.isEmpty()) agentFilterId = Integer.parseInt(agentIdP); } catch (Exception e) {}
 
-Vector agents  = billing.getTicketAgents();
-Vector payModes= billing.getTicketPaymentModes();
-Vector rows    = billing.getTicketLedgerReport(fromDate, toDate, agentFilterId);
+Vector agents   = billing.getTicketAgents();
+Vector payModes = billing.getTicketPaymentModes();
+Vector allRows  = billing.getTicketLedgerReport(fromDate, toDate, agentFilterId);
+Vector rows = new Vector();
+for (int _fi = 0; _fi < allRows.size(); _fi++) {
+    Vector _fr = (Vector) allRows.get(_fi);
+    String _ft = _fr.get(5) != null ? _fr.get(5).toString() : "DR";
+    if (txnFilter.isEmpty() || txnFilter.equals(_ft)) rows.add(_fr);
+}
 
 DecimalFormat df = new DecimalFormat("0.00");
 
@@ -150,6 +158,14 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
         <input type="date" name="toDate" class="fg-inp" value="<%=toDate%>" style="width:135px;">
       </div>
       <div class="fg">
+        <div class="fg-lbl">Type</div>
+        <select name="txnFilter" class="fg-sel" style="width:110px;">
+          <option value=""   <%=("".equals(txnFilter)  ?"selected":"")%>>CR &amp; DR</option>
+          <option value="CR" <%=("CR".equals(txnFilter)?"selected":"")%>>CR Only</option>
+          <option value="DR" <%=("DR".equals(txnFilter)?"selected":"")%>>DR Only</option>
+        </select>
+      </div>
+      <div class="fg">
         <div class="fg-lbl">Agent</div>
         <select name="agentFilter" class="fg-sel" style="width:140px;">
           <option value="0">All Agents</option>
@@ -269,7 +285,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
               <%if (bal > 0.005) {%>
               <button class="btn-collect"
                 onclick="openCollect(<%=bookingId%>,'<%=partyType%>','<%=agentIdRaw%>','<%=partyDisp.replace("'","\\'")%>','<%=txnType%>',<%=df.format(bal)%>)">
-                <i class="fa-solid fa-coins"></i> Collect
+                <%if ("CR".equals(txnType)) {%><i class="fa-solid fa-money-bill-wave"></i> Pay<%} else {%><i class="fa-solid fa-coins"></i> Collect<%}%>
               </button>
               <%} else {%>
               <span style="color:var(--green);font-size:11px;font-weight:700;"><i class="fa-solid fa-check"></i> Settled</span>
@@ -331,7 +347,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
     </div>
     <div class="modal-foot">
       <button class="bb" style="background:#f1f5f9;color:var(--text);border-color:var(--border);" onclick="closeCollect()">Cancel</button>
-      <button class="bb bb-gold" onclick="saveCollect()"><i class="fa-solid fa-floppy-disk"></i> Save</button>
+      <button class="bb bb-gold" onclick="saveCollect()"><i class="fa-solid fa-money-bill-wave"></i> Pay</button>
     </div>
   </div>
 </div>
