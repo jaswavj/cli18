@@ -88,11 +88,14 @@ for (int li = 0; li < ledHist.size(); li++) {
     } else if ("CUSTOMER".equals(lPT)) {
         if (!lMod.isEmpty()) { custLedMode = lMod; custLedTxnNo = lTxn; }
     }
-    if (lAmt > 0) {
+    if (lAmt > 0 && !"BUY_AGENT".equals(lPT)) {
         if (lisCash) grandCashPaid += lAmt;
         else { grandOnlinePaid += lAmt; if (!lTxn.isEmpty()) lastOnlineTxnNo = lTxn; }
     }
 }
+// Use ledger totals — includes initial payment + all balance collections
+grandPaid = grandCashPaid + grandOnlinePaid;
+grandBal  = grandTotal - grandPaid;
 %>
 <!DOCTYPE html>
 <html lang="en">
@@ -496,12 +499,27 @@ body {
           <span class="pay-row-lbl">Total</span>
           <span class="pay-row-amt">&#8377;&nbsp;<%=pf.format(grandTotal)%></span>
         </div>
+        <%if (grandCashPaid > 0.005 && grandOnlinePaid > 0.005) {%>
         <div class="pay-row pay-paid">
-          <span class="pay-row-lbl">Paid<%if(grandOnlinePaid>0.005&&grandCashPaid>0.005){%> <span style="font-size:7pt;font-weight:600;color:#64748b;">(Cash+Online)</span><%}else if(grandOnlinePaid>0.005){%> <span style="font-size:7pt;font-weight:600;color:#64748b;">(Online)</span><%}else if(grandCashPaid>0.005){%> <span style="font-size:7pt;font-weight:600;color:#64748b;">(Cash)</span><%}%></span>
+          <span class="pay-row-lbl">Paid <span style="font-size:7pt;font-weight:600;color:#64748b;">(Cash+Online)</span></span>
           <span class="pay-row-amt">&#8377;&nbsp;<%=pf.format(grandPaid)%></span>
         </div>
+        <div class="pay-mode-row pay-mode-cash">
+          <span class="pay-row-lbl">&#8213; Cash</span>
+          <span class="pay-row-amt">&#8377;&nbsp;<%=pf.format(grandCashPaid)%></span>
+        </div>
+        <div class="pay-mode-row pay-mode-online">
+          <span class="pay-row-lbl">&#8213; Online</span>
+          <span class="pay-row-amt">&#8377;&nbsp;<%=pf.format(grandOnlinePaid)%></span>
+        </div>
+        <%} else {%>
+        <div class="pay-row pay-paid">
+          <span class="pay-row-lbl">Paid<%if(grandOnlinePaid>0.005){%> <span style="font-size:7pt;font-weight:600;color:#64748b;">(Online)</span><%}else if(grandCashPaid>0.005){%> <span style="font-size:7pt;font-weight:600;color:#64748b;">(Cash)</span><%}%></span>
+          <span class="pay-row-amt">&#8377;&nbsp;<%=pf.format(grandPaid)%></span>
+        </div>
+        <%}%>
         <div class="pay-row <%=grandBal <= 0.005 ? "pay-bal-ok" : "pay-bal-due"%>">
-          <span class="pay-row-lbl"><%=grandBal <= 0.005 ? "&#10003; Settled" : "Balance"%></span>
+          <span class="pay-row-lbl">Balance</span>
           <span class="pay-row-amt">&#8377;&nbsp;<%=pf.format(Math.abs(grandBal))%></span>
         </div>
       </div>

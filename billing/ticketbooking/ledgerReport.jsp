@@ -27,6 +27,8 @@ Vector rows = new Vector();
 for (int _fi = 0; _fi < allRows.size(); _fi++) {
     Vector _fr = (Vector) allRows.get(_fi);
     String _ft = _fr.get(5) != null ? _fr.get(5).toString() : "DR";
+    double _fb = _fr.get(8) != null ? Double.parseDouble(_fr.get(8).toString()) : 0;
+    if (_fb <= 0.005) continue; // skip settled
     if (txnFilter.isEmpty() || txnFilter.equals(_ft)) rows.add(_fr);
 }
 
