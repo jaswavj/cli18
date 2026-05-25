@@ -123,7 +123,25 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
 .empty-state h3{font-size:15px;font-weight:700;margin-bottom:6px;}
 .error-state{background:#fef2f2;border:1.5px solid #fecaca;border-radius:var(--r-sm);padding:12px 16px;color:var(--red);display:flex;align-items:center;gap:8px;margin-bottom:14px;font-weight:600;}
 
-@media(max-width:600px){.detail-grid{grid-template-columns:1fr 1fr;}.txn-strips{grid-template-columns:1fr;}}
+@media(max-width:600px){.detail-grid{grid-template-columns:1fr 1fr;}.txn-strips{grid-template-columns:1fr;}.ph-two-col{grid-template-columns:1fr !important;}}
+
+/* Payment history table (agentStatement style) */
+.ph-table{width:100%;border-collapse:collapse;}
+.ph-table thead th{background:var(--navy2);color:#fff;padding:8px 10px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;}
+.ph-table th.num,.ph-table td.num{text-align:right;}
+.ph-table td{padding:6px 10px;font-size:12px;border-bottom:1px solid var(--border-l);vertical-align:middle;}
+.ph-table tr:hover td{background:#f5f7ff;}
+.ph-table tr.row-total td{background:var(--navy);color:#fff;font-weight:700;font-size:12px;}
+.ph-table tr.row-total:hover td{background:var(--navy);}
+.bal-dr{color:var(--red);font-weight:600;}
+.bal-cr{color:var(--green);font-weight:600;}
+.bal-nil{color:var(--muted);}
+.dr-amt{color:#b45309;font-weight:600;}
+.cr-amt{color:var(--green);font-weight:600;}
+.badge-ph{font-size:9px;padding:1px 5px;border-radius:3px;font-weight:700;}
+.badge-ph-buy{background:#fff3e0;color:#e65100;}
+.badge-ph-sell{background:#e8f5e9;color:#2e7d32;}
+.badge-ph-cust{background:#e3f2fd;color:#1565c0;}
 </style>
 </head>
 <body>
@@ -314,7 +332,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
             <div class="txn-strip-head buy-h"><i class="fa-solid fa-arrow-down-to-bracket"></i> Buy from Agent</div>
             <div class="txn-strip-body">
               <div class="txn-row2"><span class="txn-key">Agent</span><span class="txn-value"><%=buyAgent%></span></div>
-              <div class="txn-row2"><span class="txn-key">Amount</span><span class="txn-value amount">₹ <%=buyAmt.isEmpty()?"-":buyAmt%></span></div>
+              <div class="txn-row2"><span class="txn-key">Bill Amount</span><span class="txn-value amount">₹ <%=buyAmt.isEmpty()?"-":buyAmt%></span></div>
               <div class="txn-row2"><span class="txn-key">Mode</span><span class="txn-value"><%=buyMode.isEmpty()?"-":buyMode%></span></div>
             </div>
           </div>
@@ -324,7 +342,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
             <div class="txn-strip-head sell-h"><i class="fa-solid fa-arrow-up-from-bracket"></i> Sell to Agent</div>
             <div class="txn-strip-body">
               <div class="txn-row2"><span class="txn-key">Agent</span><span class="txn-value"><%=sellAgent%></span></div>
-              <div class="txn-row2"><span class="txn-key">Amount</span><span class="txn-value amount">₹ <%=sellAmt.isEmpty()?"-":sellAmt%></span></div>
+              <div class="txn-row2"><span class="txn-key">Bill Amount</span><span class="txn-value amount">₹ <%=sellAmt.isEmpty()?"-":sellAmt%></span></div>
               <div class="txn-row2"><span class="txn-key">Mode</span><span class="txn-value"><%=sellMode.isEmpty()?"-":sellMode%></span></div>
             </div>
           </div>
@@ -334,7 +352,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
             <div class="txn-strip-head cust-h"><i class="fa-solid fa-user"></i> Customer</div>
             <div class="txn-strip-body">
               <div class="txn-row2"><span class="txn-key">Name</span><span class="txn-value"><%=custName.isEmpty()?"-":custName%></span></div>
-              <div class="txn-row2"><span class="txn-key">Amount</span><span class="txn-value amount">₹ <%=custAmt.isEmpty()?"-":custAmt%></span></div>
+              <div class="txn-row2"><span class="txn-key">Bill Amount</span><span class="txn-value amount">₹ <%=custAmt.isEmpty()?"-":custAmt%></span></div>
               <div class="txn-row2"><span class="txn-key">Mode</span><span class="txn-value"><%=custMode.isEmpty()?"-":custMode%></span></div>
             </div>
           </div>
@@ -351,60 +369,156 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
           <div class="sec-div-title">Payment History</div>
           <div class="sec-div-line"></div>
         </div>
-        <%if (ledgerHistory.isEmpty()) {%>
+        <%
+        DecimalFormat dfLh = new DecimalFormat("0.00");
+        java.util.Vector buyLedger  = new java.util.Vector();
+        java.util.Vector sellLedger = new java.util.Vector();
+        for (int li = 0; li < ledgerHistory.size(); li++) {
+            Vector lhRow = (Vector) ledgerHistory.get(li);
+            String lhParty = lhRow.get(1) != null ? lhRow.get(1).toString() : "";
+            if ("BUY_AGENT".equals(lhParty)) buyLedger.add(lhRow);
+            else sellLedger.add(lhRow);
+        }
+        if (ledgerHistory.isEmpty()) {
+        %>
         <p style="color:var(--muted);font-size:12px;font-style:italic;">No payment entries found</p>
         <%} else {%>
-        <div style="overflow-x:auto;">
-        <table style="width:100%;border-collapse:collapse;font-size:12px;">
-          <thead>
-            <tr style="background:linear-gradient(135deg,#1a2744,#243159);">
-              <th style="padding:7px 10px;color:#fff;font-weight:700;text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;">#</th>
-              <th style="padding:7px 10px;color:#fff;font-weight:700;text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;">Date</th>
-              <th style="padding:7px 10px;color:#fff;font-weight:700;text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;">Party</th>
-              <th style="padding:7px 10px;color:#fff;font-weight:700;text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;">Type</th>
-              <th style="padding:7px 10px;color:#fff;font-weight:700;text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;">Mode</th>
-              <th style="padding:7px 10px;color:#fff;font-weight:700;text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;">Txn No</th>
-              <th style="padding:7px 10px;color:#fff;font-weight:700;text-align:right;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;">Amount</th>
-              <th style="padding:7px 10px;color:#fff;font-weight:700;text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;">Remarks</th>
-            </tr>
-          </thead>
-          <tbody>
-          <%
-          DecimalFormat dfLh = new DecimalFormat("0.00");
-          for (int li = 0; li < ledgerHistory.size(); li++) {
-              Vector lh = (Vector) ledgerHistory.get(li);
-              // [0]id [1]party_type [2]party_display [3]txn_type [4]bill_amount [5]amount [6]payment_mode [7]txn_no [8]txn_date [9]remarks
-              String lPartyType = lh.get(1) != null ? lh.get(1).toString() : "";
-              String lPartyDisp = lh.get(2) != null ? lh.get(2).toString() : "-";
-              String lTxnType   = lh.get(3) != null ? lh.get(3).toString() : "DR";
-              double lAmt       = lh.get(5) != null ? Double.parseDouble(lh.get(5).toString()) : 0;
-              String lMode      = lh.get(6) != null ? lh.get(6).toString() : "";
-              String lTxnNo     = lh.get(7) != null ? lh.get(7).toString() : "";
-              String lDate      = lh.get(8) != null ? lh.get(8).toString() : "-";
-              String lRemarks   = lh.get(9) != null ? lh.get(9).toString() : "";
-              String lPtBadgeClr = "BUY_AGENT".equals(lPartyType) ? "#bf6000" : "SELL_AGENT".equals(lPartyType) ? "#1b5e20" : "#0d47a1";
-              String lPtLabel = "BUY_AGENT".equals(lPartyType) ? "Buy Agent" : "SELL_AGENT".equals(lPartyType) ? "Sell Agent" : "Customer";
-              String lAmtClr = "CR".equals(lTxnType) ? "#059669" : "#dc2626";
-          %>
-          <tr style="border-bottom:1px solid #e8edf5;<%=li % 2 == 1 ? "background:#f7f8fc;" : ""%>">
-            <td style="padding:7px 10px;color:#94a3b8;"><%=li+1%></td>
-            <td style="padding:7px 10px;color:#64748b;white-space:nowrap;"><%=lDate%></td>
-            <td style="padding:7px 10px;">
-              <span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700;color:<%=lPtBadgeClr%>;background:<%="BUY_AGENT".equals(lPartyType) ? "#fff3e0" : "SELL_AGENT".equals(lPartyType) ? "#e8f5e9" : "#e3f2fd"%>;"><%=lPtLabel%></span>
-              <div style="font-size:11px;margin-top:2px;font-weight:600;"><%=lPartyDisp%></div>
-            </td>
-            <td style="padding:7px 10px;">
-              <span style="font-size:10px;font-weight:700;color:<%="DR".equals(lTxnType) ? "#dc2626" : "#059669"%>;"><%=lTxnType%></span>
-            </td>
-            <td style="padding:7px 10px;font-size:11px;"><%=lMode.isEmpty() ? "-" : lMode%></td>
-            <td style="padding:7px 10px;font-size:11px;font-weight:600;color:#5c4d8a;"><%=lTxnNo.isEmpty() ? "<span style='color:#94a3b8;'>\u2014</span>" : lTxnNo%></td>
-            <td style="padding:7px 10px;text-align:right;font-weight:700;color:<%=lAmtClr%>;">&#8377;<%=dfLh.format(lAmt)%></td>
-            <td style="padding:7px 10px;font-size:11px;color:#475569;"><%=lRemarks.isEmpty() ? "<span style='color:#94a3b8;'>\u2014</span>" : lRemarks%></td>
-          </tr>
-          <%}%>
-          </tbody>
-        </table>
-        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;" class="ph-two-col">
+
+          <!-- BUY side -->
+          <div>
+            <div style="display:flex;align-items:center;gap:6px;padding:7px 10px;background:#fff3e0;border-radius:6px 6px 0 0;border:1px solid #ffe0b2;border-bottom:none;">
+              <i class="fa-solid fa-arrow-down-to-bracket" style="color:#bf6000;font-size:12px;"></i>
+              <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#bf6000;">Buy from Agent</span>
+            </div>
+            <%if (buyLedger.isEmpty()) {%>
+            <div style="padding:14px 10px;font-size:12px;color:var(--muted);font-style:italic;background:#fafafa;border:1px solid #ffe0b2;border-radius:0 0 6px 6px;">No entries</div>
+            <%} else {
+                double bRunBal = 0, bTotalDr = 0, bTotalCr = 0;
+            %>
+            <div style="overflow-x:auto;border:1px solid #ffe0b2;border-radius:0 0 6px 6px;">
+            <table class="ph-table">
+              <thead>
+                <tr>
+                  <th style="background:#fff8f0;color:#bf6000;width:90px;">Date</th>
+                  <th style="background:#fff8f0;color:#bf6000;">Mode</th>
+                  <th class="num" style="background:#fff8f0;color:#dc2626;width:90px;">Dr.Amt</th>
+                  <th class="num" style="background:#fff8f0;color:#059669;width:90px;">Cr.Amt</th>
+                  <th class="num" style="background:#fff8f0;color:#bf6000;width:100px;">Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+              <%for (int bi = 0; bi < buyLedger.size(); bi++) {
+                  Vector bRow = (Vector) buyLedger.get(bi);
+                  String bTxnType  = bRow.get(3) != null ? bRow.get(3).toString() : "DR";
+                  double bBillAmt  = bRow.get(4) != null ? Double.parseDouble(bRow.get(4).toString()) : 0;
+                  double bPaidAmt  = bRow.get(5) != null ? Double.parseDouble(bRow.get(5).toString()) : 0;
+                  String bMode     = bRow.get(6) != null ? bRow.get(6).toString() : "";
+                  String bDate     = bRow.get(8) != null ? bRow.get(8).toString() : "-";
+                  String bRemarks  = bRow.get(9) != null ? bRow.get(9).toString() : "";
+                  String bPartyDisp = bRow.get(2) != null ? bRow.get(2).toString() : "-";
+                  boolean bIsCollection = (bBillAmt <= 0.005);
+                  double bAmt; String bDisplayDir;
+                  if (bIsCollection) { bAmt = bPaidAmt; bDisplayDir = "DR".equals(bTxnType) ? "CR" : "DR"; }
+                  else { bAmt = Math.max(bBillAmt - bPaidAmt, 0); bDisplayDir = bTxnType; }
+                  boolean bIsDR = "DR".equals(bDisplayDir);
+                  if (bIsDR) { bRunBal += bAmt; bTotalDr += bAmt; } else { bRunBal -= bAmt; bTotalCr += bAmt; }
+                  String bBal, bBalCls;
+                  if      (bRunBal >  0.001) { bBal = dfLh.format(bRunBal)  + " DR"; bBalCls = "bal-dr"; }
+                  else if (bRunBal < -0.001) { bBal = dfLh.format(-bRunBal) + " CR"; bBalCls = "bal-cr"; }
+                  else                       { bBal = "0.00";                          bBalCls = "bal-nil"; }
+              %>
+              <tr style="cursor:pointer;" onclick="showPHModal('<%=bDate%>','<%=bPartyDisp.replace("'","&#39;")%>','<%=bMode.replace("'","&#39;")%>','<%=bDisplayDir%>','<%=dfLh.format(bAmt)%>','<%=bRemarks.replace("'","&#39;").replace("\"","&quot;")%>')">
+                <td style="white-space:nowrap;color:var(--muted);"><%=bDate%></td>
+                <td style="font-size:11px;color:var(--muted);"><%=bMode.isEmpty()?"-":bMode%></td>
+                <td class="num dr-amt"><%=bIsDR ? dfLh.format(bAmt) : ""%></td>
+                <td class="num cr-amt"><%=!bIsDR ? dfLh.format(bAmt) : ""%></td>
+                <td class="num <%=bBalCls%>"><%=bBal%></td>
+              </tr>
+              <%}%>
+              <tr class="row-total">
+                <td colspan="2" style="text-align:right;letter-spacing:.4px;">TOTAL</td>
+                <td class="num"><%=dfLh.format(bTotalDr)%></td>
+                <td class="num"><%=dfLh.format(bTotalCr)%></td>
+                <td class="num <%=bRunBal>0.001?"bal-dr":bRunBal<-0.001?"bal-cr":"bal-nil"%>">
+                  <%=bRunBal>0.001?dfLh.format(bRunBal)+" DR":bRunBal<-0.001?dfLh.format(-bRunBal)+" CR":"0.00"%>
+                </td>
+              </tr>
+              </tbody>
+            </table>
+            </div>
+            <%}%>
+          </div>
+
+          <!-- SELL side -->
+          <div>
+            <div style="display:flex;align-items:center;gap:6px;padding:7px 10px;background:#e8f5e9;border-radius:6px 6px 0 0;border:1px solid #c8e6c9;border-bottom:none;">
+              <i class="fa-solid fa-arrow-up-from-bracket" style="color:#1b5e20;font-size:12px;"></i>
+              <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#1b5e20;">Sell To</span>
+            </div>
+            <%if (sellLedger.isEmpty()) {%>
+            <div style="padding:14px 10px;font-size:12px;color:var(--muted);font-style:italic;background:#fafafa;border:1px solid #c8e6c9;border-radius:0 0 6px 6px;">No entries</div>
+            <%} else {
+                double sRunBal = 0, sTotalDr = 0, sTotalCr = 0;
+            %>
+            <div style="overflow-x:auto;border:1px solid #c8e6c9;border-radius:0 0 6px 6px;">
+            <table class="ph-table">
+              <thead>
+                <tr>
+                  <th style="background:#f1f8f2;color:#1b5e20;width:90px;">Date</th>
+                  <th style="background:#f1f8f2;color:#1b5e20;">Mode</th>
+                  <th class="num" style="background:#f1f8f2;color:#dc2626;width:90px;">Dr.Amt</th>
+                  <th class="num" style="background:#f1f8f2;color:#059669;width:90px;">Cr.Amt</th>
+                  <th class="num" style="background:#f1f8f2;color:#1b5e20;width:100px;">Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+              <%for (int si = 0; si < sellLedger.size(); si++) {
+                  Vector sRow = (Vector) sellLedger.get(si);
+                  String sPartyType = sRow.get(1) != null ? sRow.get(1).toString() : "";
+                  String sPartyDisp = sRow.get(2) != null ? sRow.get(2).toString() : "-";
+                  String sTxnType   = sRow.get(3) != null ? sRow.get(3).toString() : "DR";
+                  double sBillAmt   = sRow.get(4) != null ? Double.parseDouble(sRow.get(4).toString()) : 0;
+                  double sPaidAmt   = sRow.get(5) != null ? Double.parseDouble(sRow.get(5).toString()) : 0;
+                  String sMode      = sRow.get(6) != null ? sRow.get(6).toString() : "";
+                  String sDate      = sRow.get(8) != null ? sRow.get(8).toString() : "-";
+                  String sRemarks   = sRow.get(9) != null ? sRow.get(9).toString() : "";
+                  boolean sIsCollection = (sBillAmt <= 0.005);
+                  double sAmt; String sDisplayDir;
+                  if (sIsCollection) { sAmt = sPaidAmt; sDisplayDir = "DR".equals(sTxnType) ? "CR" : "DR"; }
+                  else { sAmt = Math.max(sBillAmt - sPaidAmt, 0); sDisplayDir = sTxnType; }
+                  boolean sIsDR = "DR".equals(sDisplayDir);
+                  if (sIsDR) { sRunBal += sAmt; sTotalDr += sAmt; } else { sRunBal -= sAmt; sTotalCr += sAmt; }
+                  String sBal, sBalCls;
+                  if      (sRunBal >  0.001) { sBal = dfLh.format(sRunBal)  + " DR"; sBalCls = "bal-dr"; }
+                  else if (sRunBal < -0.001) { sBal = dfLh.format(-sRunBal) + " CR"; sBalCls = "bal-cr"; }
+                  else                       { sBal = "0.00";                          sBalCls = "bal-nil"; }
+                  String sBadgeLbl = "SELL_AGENT".equals(sPartyType) ? "Sell" : "Cust";
+                  String sBadgeCls = "SELL_AGENT".equals(sPartyType) ? "badge-ph badge-ph-sell" : "badge-ph badge-ph-cust";
+              %>
+              <tr style="cursor:pointer;" onclick="showPHModal('<%=sDate%>','<%=sPartyDisp.replace("'","&#39;")%>','<%=sMode.replace("'","&#39;")%>','<%=sDisplayDir%>','<%=dfLh.format(sAmt)%>','<%=sRemarks.replace("'","&#39;").replace("\"","&quot;")%>')">
+                <td style="white-space:nowrap;color:var(--muted);"><%=sDate%></td>
+                <td style="font-size:11px;"><span class="<%=sBadgeCls%>"><%=sBadgeLbl%></span> <span style="color:var(--muted);"><%=sMode.isEmpty()?"-":sMode%></span></td>
+                <td class="num dr-amt"><%=sIsDR ? dfLh.format(sAmt) : ""%></td>
+                <td class="num cr-amt"><%=!sIsDR ? dfLh.format(sAmt) : ""%></td>
+                <td class="num <%=sBalCls%>"><%=sBal%></td>
+              </tr>
+              <%}%>
+              <tr class="row-total">
+                <td colspan="2" style="text-align:right;letter-spacing:.4px;">TOTAL</td>
+                <td class="num"><%=dfLh.format(sTotalDr)%></td>
+                <td class="num"><%=dfLh.format(sTotalCr)%></td>
+                <td class="num <%=sRunBal>0.001?"bal-dr":sRunBal<-0.001?"bal-cr":"bal-nil"%>">
+                  <%=sRunBal>0.001?dfLh.format(sRunBal)+" DR":sRunBal<-0.001?dfLh.format(-sRunBal)+" CR":"0.00"%>
+                </td>
+              </tr>
+              </tbody>
+            </table>
+            </div>
+            <%}%>
+          </div>
+
+        </div><!-- /two-col -->
         <%}%>
 
     </div><!-- /result-body -->
@@ -415,5 +529,28 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
     <div style="height:20px;"></div>
   </div><!-- /tw-body -->
 </div><!-- /tw -->
+<script>
+function showPHModal(date, party, mode, type, amt, remark) {
+    var isDR = type === 'DR';
+    var amtClr = isDR ? '#dc2626' : '#059669';
+    var html =
+        '<table style="width:100%;border-collapse:collapse;font-size:13px;text-align:left;">' +
+        '<tr><td style="padding:5px 8px;color:#64748b;width:40%">Date</td><td style="padding:5px 8px;font-weight:600;">' + date + '</td></tr>' +
+        '<tr><td style="padding:5px 8px;color:#64748b;">Party</td><td style="padding:5px 8px;font-weight:600;">' + (party || '-') + '</td></tr>' +
+        '<tr><td style="padding:5px 8px;color:#64748b;">Type</td><td style="padding:5px 8px;"><span style="font-weight:700;color:' + amtClr + ';">' + type + '</span></td></tr>' +
+        '<tr><td style="padding:5px 8px;color:#64748b;">Mode</td><td style="padding:5px 8px;">' + (mode || '-') + '</td></tr>' +
+        '<tr><td style="padding:5px 8px;color:#64748b;">Amount</td><td style="padding:5px 8px;font-weight:700;color:' + amtClr + ';">&#8377; ' + amt + '</td></tr>' +
+        '<tr><td style="padding:8px 8px 4px;color:#64748b;vertical-align:top;">Remarks</td><td style="padding:8px 8px 4px;">' +
+        (remark ? '<span style="font-weight:600;color:#0f172a;">' + remark + '</span>' : '<span style="color:#94a3b8;font-style:italic;">No remarks</span>') +
+        '</td></tr></table>';
+    Swal.fire({
+        title: 'Transaction Detail',
+        html: html,
+        confirmButtonText: 'Close',
+        confirmButtonColor: '#1a2744',
+        width: 380
+    });
+}
+</script>
 </body>
 </html>

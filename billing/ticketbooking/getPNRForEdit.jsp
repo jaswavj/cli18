@@ -67,10 +67,12 @@ try {
     sb.append("\"seats\":\"").append(d.get(19)!=null ? d.get(19) : "1").append("\",");
     sb.append("\"phone\":\"").append(j(d.get(20))).append("\",");
     sb.append("\"buyAgentId\":\"").append(d.get(21)!=null ? d.get(21) : "").append("\",");
+    sb.append("\"buyAgentName\":\"").append(j(d.get(22))).append("\",");
     sb.append("\"buyAmount\":\"").append(d.get(23)!=null ? d.get(23) : "").append("\",");
     sb.append("\"buyModeId\":\"").append(d.get(24)!=null ? d.get(24) : "").append("\",");
     sb.append("\"buyPaid\":\"").append(d.get(26)!=null ? d.get(26) : "0").append("\",");
     sb.append("\"sellAgentId\":\"").append(d.get(27)!=null ? d.get(27) : "").append("\",");
+    sb.append("\"sellAgentName\":\"").append(j(d.get(28))).append("\",");
     sb.append("\"sellAmount\":\"").append(d.get(29)!=null ? d.get(29) : "").append("\",");
     sb.append("\"sellModeId\":\"").append(d.get(30)!=null ? d.get(30) : "").append("\",");
     sb.append("\"sellPaid\":\"").append(d.get(32)!=null ? d.get(32) : "0").append("\",");

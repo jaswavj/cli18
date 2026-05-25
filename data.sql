@@ -67,6 +67,45 @@ insert  into `customers`(`id`,`name`,`phone_number`,`address`,`date`,`time`,`is_
 (2,'cus','9595959595','','2026-05-14','16:52:46',0,1,'',0,NULL,NULL,0.00,1,0.000),
 (3,'jas','8888888888','','2026-05-14','16:59:07',0,1,'',0,NULL,NULL,0.00,1,0.000);
 
+/*Table structure for table `expense_entry` */
+
+DROP TABLE IF EXISTS `expense_entry`;
+
+CREATE TABLE `expense_entry` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `exp_type` int NOT NULL,
+  `content` varchar(255) NOT NULL,
+  `amount` decimal(10,2) NOT NULL,
+  `description` text,
+  `exc_date_time` datetime DEFAULT NULL,
+  `entry_date_time` datetime DEFAULT NULL,
+  `is_active` int DEFAULT '1',
+  `uid` int NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `type` (`exp_type`)
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+/*Data for the table `expense_entry` */
+
+insert  into `expense_entry`(`id`,`exp_type`,`content`,`amount`,`description`,`exc_date_time`,`entry_date_time`,`is_active`,`uid`) values 
+(1,1,'dd',100.00,'sd','2026-05-23 22:13:00','2026-05-23 22:13:57',1,1);
+
+/*Table structure for table `expense_type` */
+
+DROP TABLE IF EXISTS `expense_type`;
+
+CREATE TABLE `expense_type` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `type` varchar(255) NOT NULL,
+  `is_active` int DEFAULT '1',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+/*Data for the table `expense_type` */
+
+insert  into `expense_type`(`id`,`type`,`is_active`) values 
+(1,'Others',1);
+
 /*Table structure for table `heading` */
 
 DROP TABLE IF EXISTS `heading`;
@@ -84,6 +123,62 @@ CREATE TABLE `heading` (
 
 insert  into `heading`(`id`,`head1`,`head2`,`head3`,`active`) values 
 (1,'Category','Brand','Product',200);
+
+/*Table structure for table `service_bill` */
+
+DROP TABLE IF EXISTS `service_bill`;
+
+CREATE TABLE `service_bill` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `bill_no` varchar(20) NOT NULL,
+  `bill_date` date NOT NULL,
+  `customer_name` varchar(200) DEFAULT '',
+  `phone` varchar(20) DEFAULT '',
+  `subtotal` decimal(10,2) DEFAULT '0.00',
+  `discount` decimal(10,2) DEFAULT '0.00',
+  `total_amount` decimal(10,2) DEFAULT '0.00',
+  `paid_amount` decimal(10,2) DEFAULT '0.00',
+  `balance` decimal(10,2) DEFAULT '0.00',
+  `pay_mode_id` int DEFAULT NULL,
+  `pay_mode_name` varchar(100) DEFAULT '',
+  `description` text,
+  `created_by` int NOT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `bill_no` (`bill_no`)
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+/*Data for the table `service_bill` */
+
+insert  into `service_bill`(`id`,`bill_no`,`bill_date`,`customer_name`,`phone`,`subtotal`,`discount`,`total_amount`,`paid_amount`,`balance`,`pay_mode_id`,`pay_mode_name`,`description`,`created_by`,`created_at`) values 
+(1,'26-1','2026-05-23','jas','98979874521',1500.00,100.00,1400.00,1400.00,0.00,1,'CASH PAYMENT','aassddd',1,'2026-05-23 22:33:06'),
+(2,'26-2','2026-05-23','jas','9876543211',1500.00,0.00,1500.00,1500.00,0.00,1,'CASH PAYMENT','sdsddsdssd',1,'2026-05-23 22:37:09'),
+(3,'26-3','2026-05-23','as','as',11.00,0.00,11.00,11.00,0.00,NULL,'','z',1,'2026-05-23 22:38:42'),
+(4,'26-4','2026-05-23','','',0.00,0.00,0.00,0.00,0.00,NULL,'','',1,'2026-05-23 22:43:12'),
+(5,'26-5','2026-05-23','ssd','23323232',24.00,0.00,24.00,24.00,0.00,NULL,'','asa',1,'2026-05-23 22:50:31');
+
+/*Table structure for table `service_bill_items` */
+
+DROP TABLE IF EXISTS `service_bill_items`;
+
+CREATE TABLE `service_bill_items` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `bill_id` int NOT NULL,
+  `service_name` varchar(300) NOT NULL,
+  `cost` decimal(10,2) DEFAULT '0.00',
+  PRIMARY KEY (`id`),
+  KEY `bill_id` (`bill_id`),
+  CONSTRAINT `service_bill_items_ibfk_1` FOREIGN KEY (`bill_id`) REFERENCES `service_bill` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+/*Data for the table `service_bill_items` */
+
+insert  into `service_bill_items`(`id`,`bill_id`,`service_name`,`cost`) values 
+(1,1,'passport',1500.00),
+(2,2,'passport',1500.00),
+(3,3,'as',11.00),
+(4,5,'dssd',12.00),
+(5,5,'wqwq',12.00);
 
 /*Table structure for table `ticket_agent` */
 
@@ -120,7 +215,7 @@ CREATE TABLE `ticket_airline` (
   `value` varchar(100) NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_airline_value` (`value`)
-) ENGINE=InnoDB AUTO_INCREMENT=23 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=42 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 /*Data for the table `ticket_airline` */
 
@@ -178,19 +273,22 @@ CREATE TABLE `ticket_booking` (
   `customer_payment_mode_id` int unsigned DEFAULT NULL,
   `created_by` int DEFAULT NULL,
   `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  `buy_date_change_amt` decimal(10,2) NOT NULL DEFAULT '0.00' COMMENT 'Total date-change charges paid to buy agent',
+  `buy_date_change_paid` decimal(10,2) NOT NULL DEFAULT '0.00' COMMENT 'Amount paid for buy-side date-change',
+  `sell_date_change_amt` decimal(10,2) NOT NULL DEFAULT '0.00' COMMENT 'Total date-change charges charged on sell side',
+  `sell_date_change_paid` decimal(10,2) NOT NULL DEFAULT '0.00' COMMENT 'Amount paid for sell-side date-change',
+  `cancel_charge_buy` decimal(10,2) NOT NULL DEFAULT '0.00' COMMENT 'Cancel fee charged by buy agent',
+  `refund_received_buy` decimal(10,2) NOT NULL DEFAULT '0.00' COMMENT 'Amount refunded back by buy agent after cancel',
+  `cancel_charge_sell` decimal(10,2) NOT NULL DEFAULT '0.00' COMMENT 'Cancel fee charged to customer / sell agent',
+  `refund_to_sell` decimal(10,2) NOT NULL DEFAULT '0.00' COMMENT 'Amount returned to customer / sell agent',
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 /*Data for the table `ticket_booking` */
 
-insert  into `ticket_booking`(`id`,`pnr`,`ticket_no`,`booking_date`,`oneway_travel_date`,`oneway_travel_time`,`oneway_from_id`,`oneway_to_id`,`oneway_flight_no`,`oneway_airlines`,`return_travel_date`,`return_travel_time`,`return_from_id`,`return_to_id`,`return_flight_no`,`return_airlines`,`no_of_seats`,`phone`,`buy_agent_id`,`buy_amount`,`buy_paid_amount`,`buy_payment_mode_id`,`sell_agent_id`,`sell_amount`,`sell_paid_amount`,`sell_payment_mode_id`,`customer_name`,`customer_amount`,`cust_paid_amount`,`is_cancelled`,`customer_payment_mode_id`,`created_by`,`created_at`) values 
-(1,'PNR1','TKT-001','2026-05-21','2026-05-23','15:36:00',10,2,'1','IndiGo',NULL,NULL,NULL,NULL,NULL,NULL,1,'9876543210',1,1000.00,0.00,NULL,NULL,NULL,0.00,NULL,'ref',2000.00,0.00,0,NULL,1,'2026-05-21 15:37:58'),
-(2,'pnr2','TKT-002','2026-05-21','2026-05-28','17:52:00',7,4,'AY123','Blue Dart Aviation',NULL,NULL,NULL,NULL,NULL,NULL,1,'9876543211',10,1500.00,500.00,2,1,2000.00,500.00,2,NULL,NULL,0.00,0,NULL,1,'2026-05-21 15:54:09'),
-(3,'pnr3','TKT-003','2026-05-21','2026-05-29','16:30:00',8,7,'fl1','jas',NULL,NULL,NULL,NULL,NULL,NULL,1,'9876543211',4,2000.00,1200.00,2,NULL,NULL,0.00,NULL,'aaaaa',2500.00,2200.00,0,2,1,'2026-05-21 16:32:00'),
-(4,'pnr4','TKT-004','2026-05-21','2026-05-21','16:46:00',10,2,'FL1','JAS',NULL,NULL,NULL,NULL,NULL,NULL,1,'9876543211',5,500.00,100.00,2,NULL,NULL,0.00,NULL,'sasas',1000.00,200.00,0,2,1,'2026-05-21 16:47:18'),
-(5,'pnr5','TKT-005','2026-05-21','2026-06-04','16:02:00',3,1,'FL1','jas',NULL,NULL,NULL,NULL,NULL,NULL,1,'9876543210',5,1000.00,1000.00,2,NULL,NULL,0.00,NULL,'ass',2000.00,2000.00,0,2,1,'2026-05-21 16:59:43'),
-(6,'PNR6','TKT-006','2026-05-21','2026-05-31','17:33:00',8,7,'FL3','Air India','2026-06-05','17:33:00',7,8,'FL3','Air India',1,'1234567890',2,2000.00,500.00,2,NULL,NULL,0.00,NULL,'AY',1500.00,200.00,1,2,1,'2026-05-21 17:36:10'),
-(7,'PNR7','TKT-007','2026-05-20','2026-05-21','17:57:00',7,6,'1234','Air India',NULL,NULL,NULL,NULL,NULL,NULL,2,'9876543210',8,200.00,50.00,2,3,300.00,100.00,2,NULL,NULL,0.00,0,NULL,1,'2026-05-21 17:58:35');
+insert  into `ticket_booking`(`id`,`pnr`,`ticket_no`,`booking_date`,`oneway_travel_date`,`oneway_travel_time`,`oneway_from_id`,`oneway_to_id`,`oneway_flight_no`,`oneway_airlines`,`return_travel_date`,`return_travel_time`,`return_from_id`,`return_to_id`,`return_flight_no`,`return_airlines`,`no_of_seats`,`phone`,`buy_agent_id`,`buy_amount`,`buy_paid_amount`,`buy_payment_mode_id`,`sell_agent_id`,`sell_amount`,`sell_paid_amount`,`sell_payment_mode_id`,`customer_name`,`customer_amount`,`cust_paid_amount`,`is_cancelled`,`customer_payment_mode_id`,`created_by`,`created_at`,`buy_date_change_amt`,`buy_date_change_paid`,`sell_date_change_amt`,`sell_date_change_paid`,`cancel_charge_buy`,`refund_received_buy`,`cancel_charge_sell`,`refund_to_sell`) values 
+(1,'pnr1','TKT-001','2026-05-25','2026-05-27','02:27:00',6,7,'1','Air Arabia','2026-05-30','22:33:00',7,6,'1','Air India',1,'1234567891',1,200.00,20.00,1,10,400.00,40.00,1,NULL,NULL,0.00,1,NULL,1,'2026-05-25 22:28:48',100.00,10.00,200.00,20.00,10.00,190.00,10.00,390.00),
+(2,'pnr2','TKT-002','2026-05-25','2026-05-26','22:39:00',6,7,'1','AirAsia India',NULL,NULL,NULL,NULL,NULL,NULL,1,'1234567891',10,100.00,20.00,1,1,200.00,50.00,1,NULL,NULL,0.00,0,NULL,1,'2026-05-25 22:37:51',0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00);
 
 /*Table structure for table `ticket_booking_log` */
 
@@ -211,14 +309,13 @@ CREATE TABLE `ticket_booking_log` (
   PRIMARY KEY (`id`),
   KEY `idx_booking_id` (`booking_id`),
   KEY `idx_change_date` (`change_date`)
-) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 /*Data for the table `ticket_booking_log` */
 
 insert  into `ticket_booking_log`(`id`,`booking_id`,`ticket_no`,`pnr`,`action_type`,`changed_by`,`user_name`,`change_date`,`change_time`,`remarks`,`description`) values 
-(1,6,'TKT-006','PNR6','EDIT',1,'admin','2026-05-21','17:38:11','',NULL),
-(2,6,'TKT-006','PNR6','CANCEL',1,'admin','2026-05-21','17:43:30','asasd',NULL),
-(3,7,'TKT-007','PNR7','EDIT',1,'admin','2026-05-21','17:59:41','','Booking Date: 2026-05-21 → 2026-05-20\nTravel Date: 2026-05-22 → 2026-05-21\nFrom: CHENNAI (MAA) → DUBAI (DXB)\nTo: DUBAI (DXB) → CHENNAI (MAA)\nFlight No: 123 → 1234\nAirlines: Air Arabia → Air India\nBuy Agent: WASEEMA AIR TRAVELS (SHAUL) → SHREYAA AIR TRAVELS\nBuy Amt: 100.00 → 200.00\nSell Agent: SMART(AMEEN) AIR TRAVELS → SHREE AIR TRAVELS\nSell Amt: 200.00 → 300.00');
+(1,1,'TKT-001','pnr1','EDIT',1,'admin','2026-05-25','22:29:45','','Travel Date: 2026-05-26 → 2026-05-27'),
+(2,1,'TKT-001','pnr1','CANCEL',1,'admin','2026-05-25','22:33:25','a',NULL);
 
 /*Table structure for table `ticket_city` */
 
@@ -256,11 +353,12 @@ CREATE TABLE `ticket_flightno` (
   `value` varchar(50) NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_flightno_value` (`value`)
-) ENGINE=InnoDB AUTO_INCREMENT=12 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=31 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 /*Data for the table `ticket_flightno` */
 
 insert  into `ticket_flightno`(`id`,`value`) values 
+(20,'1'),
 (10,'123'),
 (11,'1234'),
 (5,'FL1'),
@@ -285,33 +383,26 @@ CREATE TABLE `ticket_ledger` (
   `remarks` varchar(500) DEFAULT NULL,
   `transaction_date` date NOT NULL,
   `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  `cancel_charge` decimal(10,2) DEFAULT NULL,
+  `charge_type` varchar(20) NOT NULL DEFAULT 'ORIGINAL',
   PRIMARY KEY (`id`),
   KEY `idx_ticket_ledger_agent` (`agent_id`),
   KEY `idx_ticket_ledger_booking` (`booking_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=20 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 /*Data for the table `ticket_ledger` */
 
-insert  into `ticket_ledger`(`id`,`booking_id`,`party_type`,`party_name`,`agent_id`,`bill_amount`,`transaction_type`,`amount`,`payment_mode_id`,`transaction_no`,`remarks`,`transaction_date`,`created_at`) values 
-(1,1,'BUY_AGENT',NULL,1,1000.00,'CR',0.00,NULL,NULL,'Buy ticket | PNR: PNR1','2026-05-21','2026-05-21 15:37:58'),
-(2,1,'CUSTOMER','ref',NULL,2000.00,'DR',0.00,NULL,NULL,'Customer payment | PNR: PNR1','2026-05-21','2026-05-21 15:37:58'),
-(3,1,'CUSTOMER','ref',NULL,0.00,'DR',1000.00,2,NULL,'Balance collection','2026-05-21','2026-05-21 15:40:56'),
-(4,1,'CUSTOMER','ref',NULL,0.00,'DR',500.00,2,NULL,'Balance collection','2026-05-21','2026-05-21 15:52:09'),
-(5,2,'BUY_AGENT',NULL,10,1500.00,'CR',500.00,2,NULL,'Buy ticket | PNR: pnr2','2026-05-21','2026-05-21 15:54:09'),
-(6,2,'SELL_AGENT',NULL,1,2000.00,'DR',500.00,2,NULL,'Sell ticket | PNR: pnr2','2026-05-21','2026-05-21 15:54:09'),
-(7,2,'SELL_AGENT',NULL,1,0.00,'DR',200.00,2,NULL,'Balance collection','2026-05-21','2026-05-21 15:54:56'),
-(8,1,'BUY_AGENT',NULL,1,0.00,'CR',250.00,2,NULL,'Balance collection','2026-05-21','2026-05-21 15:56:23'),
-(9,3,'BUY_AGENT',NULL,4,2000.00,'CR',1200.00,2,'123','Buy ticket | PNR: pnr3','2026-05-21','2026-05-21 16:32:00'),
-(10,3,'CUSTOMER','aaaaa',NULL,2500.00,'DR',2200.00,2,'1234','Customer payment | PNR: pnr3','2026-05-21','2026-05-21 16:32:00'),
-(11,3,'CUSTOMER','aaaaa',NULL,0.00,'DR',100.00,2,'4321','Balance collection','2026-05-21','2026-05-21 16:35:10'),
-(12,4,'BUY_AGENT',NULL,5,500.00,'CR',100.00,2,'1212','Buy ticket | PNR: pnr4','2026-05-21','2026-05-21 16:47:18'),
-(13,4,'CUSTOMER','sasas',NULL,1000.00,'DR',200.00,2,'2121','Customer payment | PNR: pnr4','2026-05-21','2026-05-21 16:47:18'),
-(14,5,'BUY_AGENT',NULL,5,1000.00,'CR',1000.00,2,'222','Buy ticket | PNR: pnr5','2026-05-21','2026-05-21 16:59:43'),
-(15,5,'CUSTOMER','ass',NULL,2000.00,'DR',2000.00,2,'222','Customer payment | PNR: pnr5','2026-05-21','2026-05-21 16:59:43'),
-(16,6,'BUY_AGENT',NULL,2,2000.00,'CR',500.00,2,'12345','Buy ticket | PNR: PNR6','2026-05-20','2026-05-21 17:36:10'),
-(17,6,'CUSTOMER','AY',NULL,1500.00,'DR',200.00,2,'54321','Customer payment | PNR: PNR6','2026-05-20','2026-05-21 17:36:10'),
-(18,7,'BUY_AGENT',NULL,5,200.00,'CR',50.00,2,'12312','Buy ticket | PNR: PNR7','2026-05-21','2026-05-21 17:58:35'),
-(19,7,'SELL_AGENT',NULL,7,300.00,'DR',100.00,2,'1','Sell ticket | PNR: PNR7','2026-05-21','2026-05-21 17:58:35');
+insert  into `ticket_ledger`(`id`,`booking_id`,`party_type`,`party_name`,`agent_id`,`bill_amount`,`transaction_type`,`amount`,`payment_mode_id`,`transaction_no`,`remarks`,`transaction_date`,`created_at`,`cancel_charge`,`charge_type`) values 
+(1,1,'BUY_AGENT',NULL,1,100.00,'CR',10.00,1,NULL,'Buy ticket | PNR: pnr1','2026-05-25','2026-05-25 22:28:48',NULL,'ORIGINAL'),
+(2,1,'SELL_AGENT',NULL,10,200.00,'DR',20.00,1,NULL,'Sell ticket | PNR: pnr1','2026-05-25','2026-05-25 22:28:48',NULL,'ORIGINAL'),
+(3,1,'BUY_AGENT',NULL,1,100.00,'CR',10.00,1,NULL,'Date Change | PNR: pnr1','2026-05-25','2026-05-25 22:29:45',NULL,'DATE_CHANGE'),
+(4,1,'SELL_AGENT',NULL,10,200.00,'DR',20.00,2,NULL,'Date Change | PNR: pnr1','2026-05-25','2026-05-25 22:29:45',NULL,'DATE_CHANGE'),
+(5,1,'BUY_AGENT',NULL,1,0.00,'CR',10.00,1,NULL,'Balance collection','2026-05-25','2026-05-25 22:30:37',NULL,'ORIGINAL'),
+(6,1,'SELL_AGENT',NULL,10,0.00,'DR',20.00,1,NULL,'Balance collection','2026-05-25','2026-05-25 22:30:43',NULL,'ORIGINAL'),
+(7,1,'BUY_AGENT',NULL,1,190.00,'DR',0.00,NULL,NULL,'Cancel | PNR: pnr1','2026-05-25','2026-05-25 22:33:25',10.00,'CANCEL_CHARGE'),
+(8,1,'SELL_AGENT',NULL,10,390.00,'CR',0.00,NULL,NULL,'Cancel | PNR: pnr1','2026-05-25','2026-05-25 22:33:25',10.00,'CANCEL_CHARGE'),
+(9,2,'BUY_AGENT',NULL,10,100.00,'CR',20.00,1,NULL,'Buy ticket | PNR: pnr2','2026-05-25','2026-05-25 22:37:51',NULL,'ORIGINAL'),
+(10,2,'SELL_AGENT',NULL,1,200.00,'DR',50.00,1,NULL,'Sell ticket | PNR: pnr2','2026-05-25','2026-05-25 22:37:51',NULL,'ORIGINAL');
 
 /*Table structure for table `ticket_passenger` */
 
@@ -324,19 +415,13 @@ CREATE TABLE `ticket_passenger` (
   `passenger_name` varchar(255) DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `idx_ticket_passenger_booking` (`booking_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=12 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 /*Data for the table `ticket_passenger` */
 
 insert  into `ticket_passenger`(`id`,`booking_id`,`seat_no`,`passenger_name`) values 
-(1,1,1,'jaswavj'),
-(2,2,1,'sdsddsds'),
-(3,3,1,'aaaaaaa'),
-(4,4,1,'sss'),
-(5,5,1,'dddd'),
-(7,6,1,'AYY'),
-(10,7,1,'ass'),
-(11,7,2,'arr');
+(2,1,1,'ay'),
+(3,2,1,'Jaswa Vj');
 
 /*Table structure for table `ticket_payment_mode` */
 
@@ -373,7 +458,9 @@ insert  into `user_modules`(`id`,`module_name`) values
 (3,'User management'),
 (4,'Admin'),
 (5,'Report'),
-(6,'Edit/Cancel');
+(6,'Edit/Cancel'),
+(7,'Expense'),
+(8,'Service Bill');
 
 /*Table structure for table `user_permission` */
 
@@ -388,22 +475,24 @@ CREATE TABLE `user_permission` (
   PRIMARY KEY (`id`),
   KEY `mod` (`module_id`),
   KEY `uid` (`uid`)
-) ENGINE=InnoDB AUTO_INCREMENT=127 DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB AUTO_INCREMENT=135 DEFAULT CHARSET=latin1;
 
 /*Data for the table `user_permission` */
 
 insert  into `user_permission`(`id`,`module_id`,`uid`,`date`,`time`) values 
-(70,1,1,'2025-09-19','11:43:23'),
-(71,2,1,'2025-09-19','11:43:23'),
-(72,3,1,'2025-09-19','11:43:23'),
-(73,4,1,'2025-09-19','11:43:23'),
 (120,1,25,'2026-05-20','16:26:19'),
 (121,2,25,'2026-05-20','16:26:19'),
 (122,3,25,'2026-05-20','16:26:19'),
 (123,4,25,'2026-05-20','16:26:19'),
-(124,5,1,'2026-05-20','16:26:19'),
 (125,5,25,'2026-05-20','16:26:19'),
-(126,6,1,'2026-05-20','16:26:19');
+(127,1,1,'2026-05-23','22:06:18'),
+(128,2,1,'2026-05-23','22:06:18'),
+(129,3,1,'2026-05-23','22:06:18'),
+(130,4,1,'2026-05-23','22:06:18'),
+(131,5,1,'2026-05-23','22:06:18'),
+(132,6,1,'2026-05-23','22:06:18'),
+(133,7,1,'2026-05-23','22:06:18'),
+(134,8,1,'2026-05-23','22:06:18');
 
 /*Table structure for table `users` */
 

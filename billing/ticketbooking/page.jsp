@@ -904,6 +904,10 @@ function setSellType(type) {
     document.getElementById('sellAgentSection').style.display = isCust ? 'none' : '';
     document.getElementById('chipCustomer').classList.toggle('selected', isCust);
     document.getElementById('chipAgent').classList.toggle('selected', !isCust);
+    // Sync radio button checked state so save logic reads correct type
+    document.querySelectorAll('input[name="sellType"]').forEach(function(r) {
+        r.checked = (r.value === type);
+    });
 }
 
 // ══════════════════════════════════════════
