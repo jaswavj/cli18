@@ -348,7 +348,98 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
   </div>
 </div>
 
-<!-- COLLECT BALANCE MODAL -->
+<!-- CANCELLED BOOKINGS – PENDING SETTLEMENT (SELL SIDE) -->
+<%
+Vector cancelRowsSell = billing.getTicketCancelledPending("SELL", agentFilterId);
+if (!cancelRowsSell.isEmpty()) {
+%>
+<div style="padding:0 16px 24px;">
+  <div style="background:#fff;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,.10);overflow:hidden;">
+    <div style="background:#7c1d1d;color:#fff;padding:12px 18px;font-weight:700;font-size:14px;display:flex;align-items:center;gap:8px;">
+      <i class="fa-solid fa-triangle-exclamation"></i> Cancelled Bookings – Pending Settlement (Sell Side)
+    </div>
+    <div style="overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr style="background:#fef2f2;color:#7c1d1d;font-weight:700;text-transform:uppercase;font-size:11px;">
+            <th style="padding:10px 12px;border-bottom:2px solid #fca5a5;text-align:left;">#</th>
+            <th style="padding:10px 12px;border-bottom:2px solid #fca5a5;text-align:left;">Booking Date</th>
+            <th style="padding:10px 12px;border-bottom:2px solid #fca5a5;text-align:left;">Ticket / PNR</th>
+            <th style="padding:10px 12px;border-bottom:2px solid #fca5a5;text-align:left;">Route</th>
+            <th style="padding:10px 12px;border-bottom:2px solid #fca5a5;text-align:left;">Party</th>
+            <th style="padding:10px 12px;border-bottom:2px solid #fca5a5;text-align:right;">Pending Balance</th>
+            <th style="padding:10px 12px;border-bottom:2px solid #fca5a5;text-align:center;">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <%
+          int csnos = 1;
+          for (int ci = 0; ci < cancelRowsSell.size(); ci++) {
+              Vector cr = (Vector) cancelRowsSell.get(ci);
+              int    cBid     = cr.get(0) != null ? Integer.parseInt(cr.get(0).toString()) : 0;
+              String cTktNo   = cr.get(1) != null ? cr.get(1).toString() : "-";
+              String cPnr     = cr.get(2) != null ? cr.get(2).toString() : "-";
+              String cOwFrom  = cr.get(3) != null ? cr.get(3).toString() : "";
+              String cOwTo    = cr.get(4) != null ? cr.get(4).toString() : "";
+              String cBdate   = cr.get(5) != null ? cr.get(5).toString() : "";
+              String cPtype   = cr.get(6) != null ? cr.get(6).toString() : "CUSTOMER";
+              String cPdisp   = cr.get(7) != null ? cr.get(7).toString() : "-";
+              int    cAgId    = cr.get(8) != null ? Integer.parseInt(cr.get(8).toString()) : 0;
+              String cPname   = cr.get(9) != null ? cr.get(9).toString() : "";
+              double cPendBal = cr.get(10) != null ? Double.parseDouble(cr.get(10).toString()) : 0;
+              // SELL: positive = we owe them refund; negative = they owe us
+              boolean weOweRefund = cPendBal > 0;
+              double  absbal      = Math.abs(cPendBal);
+              String  cSafeName   = cPdisp.replace("'", "\\'");
+              // txnType: CR when we give refund; DR when we collect from them
+              String  cTxnType = weOweRefund ? "CR" : "DR";
+              String  ptBadge  = "SELL_AGENT".equals(cPtype) ? "badge-sell" : "badge-cust";
+              String  ptLabel  = "SELL_AGENT".equals(cPtype) ? "Sell Agent" : "Customer";
+          %>
+          <tr style="border-bottom:1px solid #fee2e2;">
+            <td style="padding:9px 12px;color:#7c1d1d;"><%=csnos++%></td>
+            <td style="padding:9px 12px;font-size:11px;color:#6b7280;"><%=cBdate%></td>
+            <td style="padding:9px 12px;">
+              <div style="font-weight:700;color:#c9922a;"><%=cTktNo%></div>
+              <div style="font-size:11px;color:#6b7280;"><%=cPnr%></div>
+            </td>
+            <td style="padding:9px 12px;font-weight:600;white-space:nowrap;">
+              <%=cOwFrom.isEmpty() && cOwTo.isEmpty() ? "<span style='color:#9ca3af;'>-</span>" : cOwFrom + " &rarr; " + cOwTo%>
+            </td>
+            <td style="padding:9px 12px;">
+              <span class="badge <%=ptBadge%>"><%=ptLabel%></span>
+              <div style="font-size:12px;margin-top:3px;font-weight:600;"><%=cPdisp%></div>
+            </td>
+            <td style="padding:9px 12px;text-align:right;font-weight:700;">
+              <% if (weOweRefund) { %>
+                <span style="color:#dc2626;">&#8377;<%=df.format(absbal)%></span>
+                <div style="font-size:10px;color:#7c1d1d;">We owe refund</div>
+              <% } else { %>
+                <span style="color:#059669;">&#8377;<%=df.format(absbal)%></span>
+                <div style="font-size:10px;color:#065f46;">They owe us</div>
+              <% } %>
+            </td>
+            <td style="padding:9px 12px;text-align:center;">
+              <% if (weOweRefund) { %>
+                <button onclick="openCollect('<%=cBid%>','<%=cPtype%>','<%=cAgId%>','<%=cSafeName%>','<%=cTxnType%>',<%=absbal%>)"
+                  style="background:#7c1d1d;color:#fff;border:none;border-radius:5px;padding:5px 12px;cursor:pointer;font-size:12px;font-weight:600;">
+                  <i class="fa-solid fa-rotate-left"></i> Give Refund
+                </button>
+              <% } else { %>
+                <button onclick="openCollect('<%=cBid%>','<%=cPtype%>','<%=cAgId%>','<%=cSafeName%>','<%=cTxnType%>',<%=absbal%>)"
+                  style="background:#065f46;color:#fff;border:none;border-radius:5px;padding:5px 12px;cursor:pointer;font-size:12px;font-weight:600;">
+                  <i class="fa-solid fa-hand-holding-dollar"></i> Collect Balance
+                </button>
+              <% } %>
+            </td>
+          </tr>
+          <%}%>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<%}%>
 <div class="modal-overlay" id="collectModal">
   <div class="modal-box">
     <div class="modal-head">

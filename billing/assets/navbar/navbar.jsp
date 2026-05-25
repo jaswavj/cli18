@@ -110,7 +110,7 @@ for (int i = 0; i < vecPer.size(); i++) {
       </div>
     </div>
   <% } %>
-<% if (permissions.contains(7)) { %>
+<% if (permissions.contains(8)) { %>
     <div class="sidebar-dropdown">
       <a href="#" class="sidebar-item" data-bs-toggle="collapse" data-bs-target="#serviceBillMenu">
         <i class="fas fa-file-invoice-dollar"></i>
@@ -127,7 +127,7 @@ for (int i = 0; i < vecPer.size(); i++) {
       </div>
     </div>
 <% } %>
-<% if (permissions.contains(6)) { %>
+<% if (permissions.contains(7)) { %>
     <div class="sidebar-dropdown">
       <a href="#" class="sidebar-item" data-bs-toggle="collapse" data-bs-target="#expenseMenu">
         <i class="fas fa-wallet"></i>

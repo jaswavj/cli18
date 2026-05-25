@@ -91,6 +91,23 @@ try {
 
     String remarks = request.getParameter("remarks") != null ? request.getParameter("remarks").trim() : "";
 
+    // ── Date Change Charge params ─────────────────────────────────────────────
+    String buyDCAmtStr   = request.getParameter("buyDCAmount");
+    String buyDCPaidStr  = request.getParameter("buyDCPaid");
+    String buyDCModeStr  = request.getParameter("buyDCModeId");
+    Double  buyDCAmt     = (buyDCAmtStr  != null && !buyDCAmtStr.trim().isEmpty())  ? Double.parseDouble(buyDCAmtStr.trim())  : null;
+    Double  buyDCPaid    = (buyDCPaidStr != null && !buyDCPaidStr.trim().isEmpty()) ? Double.parseDouble(buyDCPaidStr.trim()) : null;
+    Integer buyDCModeId  = (buyDCModeStr != null && !buyDCModeStr.trim().isEmpty()) ? Integer.parseInt(buyDCModeStr.trim())   : null;
+    String  buyDCTxnNo   = request.getParameter("buyDCTxnNo") != null ? request.getParameter("buyDCTxnNo").trim() : "";
+
+    String sellDCAmtStr  = request.getParameter("sellDCAmount");
+    String sellDCPaidStr = request.getParameter("sellDCPaid");
+    String sellDCModeStr = request.getParameter("sellDCModeId");
+    Double  sellDCAmt    = (sellDCAmtStr  != null && !sellDCAmtStr.trim().isEmpty())  ? Double.parseDouble(sellDCAmtStr.trim())  : null;
+    Double  sellDCPaid   = (sellDCPaidStr != null && !sellDCPaidStr.trim().isEmpty()) ? Double.parseDouble(sellDCPaidStr.trim()) : null;
+    Integer sellDCModeId = (sellDCModeStr != null && !sellDCModeStr.trim().isEmpty()) ? Integer.parseInt(sellDCModeStr.trim())   : null;
+    String  sellDCTxnNo  = request.getParameter("sellDCTxnNo") != null ? request.getParameter("sellDCTxnNo").trim() : "";
+
     // ── Call update method ───────────────────────────────────────────────────
     billing.updateTicketBooking(
         bookingId, pnr, bookingDate,
@@ -100,7 +117,9 @@ try {
         buyAgentId, buyAmount, buyModeId,
         sellAgentId, sellAmount, sellModeId,
         customerName, custAmount, custModeId,
-        passengerNames, userId, remarks
+        passengerNames, userId, remarks,
+        buyDCAmt, buyDCPaid, buyDCModeId, buyDCTxnNo,
+        sellDCAmt, sellDCPaid, sellDCModeId, sellDCTxnNo
     );
 
     out.print("SUCCESS");

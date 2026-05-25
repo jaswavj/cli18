@@ -6650,7 +6650,9 @@ public void updateTicketBooking(
         Integer buyAgentId, Double buyAmount, Integer buyModeId,
         Integer sellAgentId, Double sellAmount, Integer sellModeId,
         String customerName, Double customerAmount, Integer custModeId,
-        String[] passengerNames, int updatedBy, String remarks) throws Exception {
+        String[] passengerNames, int updatedBy, String remarks,
+        Double buyDCAmt, Double buyDCPaid, Integer buyDCModeId, String buyDCTxnNo,
+        Double sellDCAmt, Double sellDCPaid, Integer sellDCModeId, String sellDCTxnNo) throws Exception {
 
     Connection con = null; PreparedStatement pt = null;
     String today = new java.text.SimpleDateFormat("yyyy-MM-dd").format(new java.util.Date());
@@ -6823,7 +6825,9 @@ public void updateTicketBooking(
         // 1b. Update ledger bill_amount and payment_mode for each party
         if (buyAgentId != null && buyAmount != null) {
             pt = con.prepareStatement(
-                "UPDATE ticket_ledger SET bill_amount=?, payment_mode_id=? WHERE booking_id=? AND party_type='BUY_AGENT'");
+                "UPDATE ticket_ledger SET bill_amount=?, payment_mode_id=?" +
+                " WHERE booking_id=? AND party_type='BUY_AGENT'" +
+                " AND COALESCE(bill_amount,0) > 0 AND COALESCE(charge_type,'ORIGINAL') = 'ORIGINAL'");
             pt.setDouble(1, buyAmount);
             if (buyModeId != null) pt.setInt(2, buyModeId); else pt.setNull(2, Types.INTEGER);
             pt.setInt(3, bookingId);
@@ -6831,7 +6835,9 @@ public void updateTicketBooking(
         }
         if (sellAgentId != null && sellAmount != null) {
             pt = con.prepareStatement(
-                "UPDATE ticket_ledger SET bill_amount=?, payment_mode_id=? WHERE booking_id=? AND party_type='SELL_AGENT'");
+                "UPDATE ticket_ledger SET bill_amount=?, payment_mode_id=?" +
+                " WHERE booking_id=? AND party_type='SELL_AGENT'" +
+                " AND COALESCE(bill_amount,0) > 0 AND COALESCE(charge_type,'ORIGINAL') = 'ORIGINAL'");
             pt.setDouble(1, sellAmount);
             if (sellModeId != null) pt.setInt(2, sellModeId); else pt.setNull(2, Types.INTEGER);
             pt.setInt(3, bookingId);
@@ -6839,10 +6845,88 @@ public void updateTicketBooking(
         }
         if (customerAmount != null) {
             pt = con.prepareStatement(
-                "UPDATE ticket_ledger SET bill_amount=?, payment_mode_id=? WHERE booking_id=? AND party_type='CUSTOMER'");
+                "UPDATE ticket_ledger SET bill_amount=?, payment_mode_id=?" +
+                " WHERE booking_id=? AND party_type='CUSTOMER'" +
+                " AND COALESCE(bill_amount,0) > 0 AND COALESCE(charge_type,'ORIGINAL') = 'ORIGINAL'");
             pt.setDouble(1, customerAmount);
             if (custModeId != null) pt.setInt(2, custModeId); else pt.setNull(2, Types.INTEGER);
             pt.setInt(3, bookingId);
+            pt.executeUpdate(); pt.close();
+        }
+
+        // 1c. Date Change Charge – Buy side
+        if (buyDCAmt != null && buyDCAmt > 0) {
+            double buyDCPaidVal = (buyDCPaid != null) ? buyDCPaid : 0.0;
+            pt = con.prepareStatement(
+                "UPDATE ticket_booking SET buy_amount=COALESCE(buy_amount,0)+?," +
+                " buy_paid_amount=COALESCE(buy_paid_amount,0)+?," +
+                " buy_date_change_amt=COALESCE(buy_date_change_amt,0)+?," +
+                " buy_date_change_paid=COALESCE(buy_date_change_paid,0)+?" +
+                " WHERE id=?");
+            pt.setDouble(1, buyDCAmt); pt.setDouble(2, buyDCPaidVal);
+            pt.setDouble(3, buyDCAmt); pt.setDouble(4, buyDCPaidVal);
+            pt.setInt(5, bookingId);
+            pt.executeUpdate(); pt.close();
+            // Ledger: Buy agent date change charge (CR – we owe more to agent)
+            pt = con.prepareStatement(
+                "INSERT INTO ticket_ledger" +
+                " (booking_id,party_type,agent_id,party_name,transaction_type,bill_amount,amount,payment_mode_id,transaction_no,remarks,transaction_date,charge_type)" +
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
+            pt.setInt(1, bookingId);
+            pt.setString(2, "BUY_AGENT");
+            if (buyAgentId != null) pt.setInt(3, buyAgentId); else pt.setNull(3, Types.INTEGER);
+            pt.setNull(4, Types.VARCHAR);
+            pt.setString(5, "CR");
+            pt.setDouble(6, buyDCAmt);
+            pt.setDouble(7, buyDCPaidVal);
+            if (buyDCModeId != null) pt.setInt(8, buyDCModeId); else pt.setNull(8, Types.INTEGER);
+            if (buyDCTxnNo != null && !buyDCTxnNo.isEmpty()) pt.setString(9, buyDCTxnNo); else pt.setNull(9, Types.VARCHAR);
+            pt.setString(10, "Date Change | PNR: " + (pnr != null ? pnr : "-"));
+            pt.setString(11, today);
+            pt.setString(12, "DATE_CHANGE");
+            pt.executeUpdate(); pt.close();
+        }
+
+        // 1d. Date Change Charge – Sell side
+        if (sellDCAmt != null && sellDCAmt > 0) {
+            double sellDCPaidVal = (sellDCPaid != null) ? sellDCPaid : 0.0;
+            boolean isSellAgent = (sellAgentId != null);
+            if (isSellAgent) {
+                pt = con.prepareStatement(
+                    "UPDATE ticket_booking SET sell_amount=COALESCE(sell_amount,0)+?," +
+                    " sell_paid_amount=COALESCE(sell_paid_amount,0)+?," +
+                    " sell_date_change_amt=COALESCE(sell_date_change_amt,0)+?," +
+                    " sell_date_change_paid=COALESCE(sell_date_change_paid,0)+?" +
+                    " WHERE id=?");
+            } else {
+                pt = con.prepareStatement(
+                    "UPDATE ticket_booking SET customer_amount=COALESCE(customer_amount,0)+?," +
+                    " cust_paid_amount=COALESCE(cust_paid_amount,0)+?," +
+                    " sell_date_change_amt=COALESCE(sell_date_change_amt,0)+?," +
+                    " sell_date_change_paid=COALESCE(sell_date_change_paid,0)+?" +
+                    " WHERE id=?");
+            }
+            pt.setDouble(1, sellDCAmt); pt.setDouble(2, sellDCPaidVal);
+            pt.setDouble(3, sellDCAmt); pt.setDouble(4, sellDCPaidVal);
+            pt.setInt(5, bookingId);
+            pt.executeUpdate(); pt.close();
+            // Ledger: Sell side date change charge (DR – they owe us more)
+            pt = con.prepareStatement(
+                "INSERT INTO ticket_ledger" +
+                " (booking_id,party_type,agent_id,party_name,transaction_type,bill_amount,amount,payment_mode_id,transaction_no,remarks,transaction_date,charge_type)" +
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
+            pt.setInt(1, bookingId);
+            pt.setString(2, isSellAgent ? "SELL_AGENT" : "CUSTOMER");
+            if (isSellAgent && sellAgentId != null) pt.setInt(3, sellAgentId); else pt.setNull(3, Types.INTEGER);
+            if (!isSellAgent && customerName != null && !customerName.isEmpty()) pt.setString(4, customerName); else pt.setNull(4, Types.VARCHAR);
+            pt.setString(5, "DR");
+            pt.setDouble(6, sellDCAmt);
+            pt.setDouble(7, sellDCPaidVal);
+            if (sellDCModeId != null) pt.setInt(8, sellDCModeId); else pt.setNull(8, Types.INTEGER);
+            if (sellDCTxnNo != null && !sellDCTxnNo.isEmpty()) pt.setString(9, sellDCTxnNo); else pt.setNull(9, Types.VARCHAR);
+            pt.setString(10, "Date Change | PNR: " + (pnr != null ? pnr : "-"));
+            pt.setString(11, today);
+            pt.setString(12, "DATE_CHANGE");
             pt.executeUpdate(); pt.close();
         }
 
@@ -6917,7 +7001,9 @@ public void updateTicketBooking(
 // ─────────────────────────────────────────────────────────────────────────────
 // CANCEL TICKET BOOKING  –  soft-cancel + audit log
 // ─────────────────────────────────────────────────────────────────────────────
-public void cancelTicketBooking(int bookingId, int cancelledBy, String reason) throws Exception {
+public void cancelTicketBooking(int bookingId, int cancelledBy, String reason,
+        Double cancelChargeBuy, Integer cancelModeBuy,
+        Double cancelChargeSell, Integer cancelModeSell) throws Exception {
     Connection con = null; PreparedStatement pt = null;
     String today = new java.text.SimpleDateFormat("yyyy-MM-dd").format(new java.util.Date());
     String now   = new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date());
@@ -6928,12 +7014,88 @@ public void cancelTicketBooking(int bookingId, int cancelledBy, String reason) t
         pt = con.prepareStatement("UPDATE ticket_booking SET is_cancelled=1 WHERE id=?");
         pt.setInt(1, bookingId); pt.executeUpdate(); pt.close();
 
-        pt = con.prepareStatement("SELECT ticket_no, pnr FROM ticket_booking WHERE id=? LIMIT 1");
+        // Fetch booking details + original bill amounts for auto-calculating refund
+        pt = con.prepareStatement(
+            "SELECT ticket_no, pnr, buy_agent_id, sell_agent_id, customer_name," +
+            " COALESCE(buy_amount,0), COALESCE(sell_amount,0), COALESCE(customer_amount,0)" +
+            " FROM ticket_booking WHERE id=? LIMIT 1");
         pt.setInt(1, bookingId);
         ResultSet rs2 = pt.executeQuery();
         String tktNo="", pnrVal="";
-        if (rs2.next()) { tktNo=rs2.getString(1)!=null?rs2.getString(1):""; pnrVal=rs2.getString(2)!=null?rs2.getString(2):""; }
+        int origBuyAgentId = 0; boolean hasBuyAgent = false;
+        int origSellAgentId = 0; boolean hasSellAgent = false;
+        String origCustName = "";
+        double buyBillAmt = 0, sellBillAmt = 0;
+        if (rs2.next()) {
+            tktNo    = rs2.getString(1) != null ? rs2.getString(1) : "";
+            pnrVal   = rs2.getString(2) != null ? rs2.getString(2) : "";
+            if (rs2.getObject(3) != null) { origBuyAgentId  = rs2.getInt(3);  hasBuyAgent  = true; }
+            if (rs2.getObject(4) != null) { origSellAgentId = rs2.getInt(4);  hasSellAgent = true; }
+            origCustName = rs2.getString(5) != null ? rs2.getString(5) : "";
+            buyBillAmt   = rs2.getDouble(6);
+            // sell_amount when sell agent, customer_amount when direct customer
+            sellBillAmt  = hasSellAgent ? rs2.getDouble(7) : rs2.getDouble(8);
+        }
         rs2.close(); pt.close();
+
+        // Auto-calculate refunds (used for ticket_booking columns only)
+        double calcRefundBuy  = (cancelChargeBuy  != null) ? Math.max(0, buyBillAmt  - cancelChargeBuy)  : 0;
+        double calcRefundSell = (cancelChargeSell != null) ? Math.max(0, sellBillAmt - cancelChargeSell) : 0;
+
+        // Update cancel charge/refund columns in ticket_booking
+        pt = con.prepareStatement(
+            "UPDATE ticket_booking SET" +
+            " cancel_charge_buy=?, refund_received_buy=?," +
+            " cancel_charge_sell=?, refund_to_sell=?" +
+            " WHERE id=?");
+        pt.setDouble(1, cancelChargeBuy  != null ? cancelChargeBuy  : 0.0);
+        pt.setDouble(2, calcRefundBuy);
+        pt.setDouble(3, cancelChargeSell != null ? cancelChargeSell : 0.0);
+        pt.setDouble(4, calcRefundSell);
+        pt.setInt(5, bookingId);
+        pt.executeUpdate(); pt.close();
+
+        String ledSql =
+            "INSERT INTO ticket_ledger" +
+            " (booking_id,party_type,agent_id,party_name,transaction_type,bill_amount,amount,payment_mode_id,transaction_no,remarks,transaction_date,charge_type,cancel_charge)" +
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)";
+
+        // Buy Agent cancel – single row: bill_amount=refund, cancel_charge=cancel fee, amount=0 (pending)
+        if (cancelChargeBuy != null && cancelChargeBuy > 0) {
+            pt = con.prepareStatement(ledSql);
+            pt.setInt(1, bookingId);
+            pt.setString(2, "BUY_AGENT");
+            if (hasBuyAgent) pt.setInt(3, origBuyAgentId); else pt.setNull(3, Types.INTEGER);
+            pt.setNull(4, Types.VARCHAR);
+            pt.setString(5, "DR");
+            double buyRefund = Math.max(0, buyBillAmt - cancelChargeBuy);
+            pt.setDouble(6, buyRefund); pt.setDouble(7, 0.0);
+            pt.setNull(8, Types.INTEGER);
+            pt.setNull(9, Types.VARCHAR);
+            pt.setString(10, "Cancel | PNR: " + pnrVal);
+            pt.setString(11, today); pt.setString(12, "CANCEL_CHARGE");
+            pt.setDouble(13, cancelChargeBuy);
+            pt.executeUpdate(); pt.close();
+        }
+
+        // Sell side cancel – single row: bill_amount=refund, cancel_charge=cancel fee, amount=0 (pending)
+        if (cancelChargeSell != null && cancelChargeSell > 0) {
+            String sParty = hasSellAgent ? "SELL_AGENT" : "CUSTOMER";
+            pt = con.prepareStatement(ledSql);
+            pt.setInt(1, bookingId);
+            pt.setString(2, sParty);
+            if (hasSellAgent) pt.setInt(3, origSellAgentId); else pt.setNull(3, Types.INTEGER);
+            if (!hasSellAgent && !origCustName.isEmpty()) pt.setString(4, origCustName); else pt.setNull(4, Types.VARCHAR);
+            pt.setString(5, "CR");
+            double sellRefund = Math.max(0, sellBillAmt - cancelChargeSell);
+            pt.setDouble(6, sellRefund); pt.setDouble(7, 0.0);
+            pt.setNull(8, Types.INTEGER);
+            pt.setNull(9, Types.VARCHAR);
+            pt.setString(10, "Cancel | PNR: " + pnrVal);
+            pt.setString(11, today); pt.setString(12, "CANCEL_CHARGE");
+            pt.setDouble(13, cancelChargeSell);
+            pt.executeUpdate(); pt.close();
+        }
 
         pt = con.prepareStatement("SELECT fullName FROM users WHERE id=? LIMIT 1");
         pt.setInt(1, cancelledBy);
@@ -7125,10 +7287,13 @@ public Vector getTicketLedgerReport(String fromDate, String toDate, int agentId)
         String sql =
             "SELECT l.booking_id, b.ticket_no, b.pnr, l.party_type," +
             " COALESCE(a.name, l.party_name) AS party_display," +
-            " l.transaction_type," +
-            " SUM(COALESCE(l.bill_amount,0)) AS total_bill," +
-            " SUM(COALESCE(l.amount,0)) AS total_paid," +
-            " SUM(COALESCE(l.bill_amount,0)) - SUM(COALESCE(l.amount,0)) AS balance," +
+            " SUM(CASE WHEN l.transaction_type='CR' THEN COALESCE(l.bill_amount,0) ELSE 0 END)" +
+            "  - SUM(CASE WHEN l.transaction_type='DR' THEN COALESCE(l.bill_amount,0) ELSE 0 END) AS net_bill," +
+            " SUM(CASE WHEN l.transaction_type='CR' THEN COALESCE(l.amount,0) ELSE 0 END)" +
+            "  - SUM(CASE WHEN l.transaction_type='DR' THEN COALESCE(l.amount,0) ELSE 0 END) AS net_paid," +
+            " SUM(CASE WHEN l.transaction_type='CR' THEN COALESCE(l.bill_amount,0)-COALESCE(l.amount,0)" +
+            "          WHEN l.transaction_type='DR' THEN -(COALESCE(l.bill_amount,0)-COALESCE(l.amount,0))" +
+            "          ELSE 0 END) AS net_balance," +
             " MIN(l.transaction_date) AS first_date," +
             " l.agent_id, l.party_name," +
             " MAX(COALESCE(pm.modes,'')) AS payment_mode_name," +
@@ -7138,9 +7303,8 @@ public Vector getTicketLedgerReport(String fromDate, String toDate, int agentId)
             " LEFT JOIN ticket_agent a ON a.id = l.agent_id" +
             " LEFT JOIN ticket_payment_mode pm ON pm.id = l.payment_mode_id" +
             " WHERE l.transaction_date BETWEEN ? AND ?" +
-            " AND COALESCE(b.is_cancelled,0) = 0" +
             (agentId > 0 ? " AND l.agent_id = ?" : "") +
-            " GROUP BY l.booking_id, l.party_type, l.transaction_type, l.agent_id, l.party_name, b.ticket_no, b.pnr, a.name" +
+            " GROUP BY l.booking_id, l.party_type, l.agent_id, l.party_name, b.ticket_no, b.pnr, a.name" +
             " ORDER BY MIN(l.transaction_date) DESC, l.booking_id DESC";
         pt = con.prepareStatement(sql);
         pt.setString(1, fromDate);
@@ -7345,7 +7509,7 @@ public Vector getTicketPaymentsDetail(String fromDate, String toDate, int agentI
             " LEFT JOIN ticket_payment_mode pm ON pm.id = l.payment_mode_id" +
             " LEFT JOIN ticket_city cf ON cf.id = b.oneway_from_id" +
             " LEFT JOIN ticket_city ct ON ct.id = b.oneway_to_id" +
-            " WHERE l.transaction_date BETWEEN ? AND ? AND COALESCE(b.is_cancelled,0)=0" + ptFilter + agFilter +
+            " WHERE l.transaction_date BETWEEN ? AND ?" + ptFilter + agFilter +
             " ORDER BY l.transaction_date DESC, l.booking_id DESC, l.id ASC";
         pt = con.prepareStatement(sql);
         pt.setString(1, fromDate);
@@ -7356,6 +7520,102 @@ public Vector getTicketPaymentsDetail(String fromDate, String toDate, int agentI
             Vector row = new Vector();
             for (int i = 1; i <= rs.getMetaData().getColumnCount(); i++) row.add(rs.getObject(i));
             result.add(row);
+        }
+    } catch (Exception e) { e.printStackTrace(); }
+    finally {
+        if (rs  != null) try { rs.close();  } catch (Exception e) { ; }
+        if (pt  != null) try { pt.close();  } catch (Exception e) { ; }
+        if (con != null) try { con.close(); } catch (Exception e) { ; }
+    }
+    return result;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CANCELLED BOOKINGS PENDING SETTLEMENT
+// Returns cancelled bookings that still have a pending balance to settle.
+// scope = "BUY"  → buy-agent side (we owe agent or agent owes us)
+// scope = "SELL" → sell-agent / customer side (we owe refund or they owe us)
+// agentId = 0 means all agents.
+// Row: [0]booking_id [1]ticket_no [2]pnr [3]ow_from [4]ow_to
+//      [5]booking_date [6]party_type [7]party_display
+//      [8]agent_id [9]party_name [10]pending_balance
+//  pending_balance sign (BUY):  > 0 → we still owe agent  | < 0 → agent owes us
+//  pending_balance sign (SELL): > 0 → we still owe refund | < 0 → they owe us more
+// ─────────────────────────────────────────────────────────────────────────────
+public Vector getTicketCancelledPending(String scope, int agentId) {
+    Vector result = new Vector();
+    Connection con = null; PreparedStatement pt = null; ResultSet rs = null;
+    try {
+        con = util.DBConnectionManager.getConnectionFromPool();
+        if ("BUY".equals(scope)) {
+            String agFilter = agentId > 0 ? " AND b.buy_agent_id = ?" : "";
+            String sql =
+                "SELECT b.id, COALESCE(b.ticket_no,'-'), COALESCE(b.pnr,'-')," +
+                " COALESCE(cf.name,'') AS ow_from, COALESCE(ct.name,'') AS ow_to," +
+                " DATE_FORMAT(b.booking_date,'%d/%m/%Y') AS bdate," +
+                " 'BUY_AGENT' AS party_type," +
+                " COALESCE(ta.name, '-') AS party_display," +
+                " COALESCE(b.buy_agent_id, 0) AS agent_id," +
+                " '' AS party_name," +
+                " (COALESCE(b.cancel_charge_buy,0) - COALESCE(b.buy_paid_amount,0)" +
+                "  - COALESCE((SELECT SUM(l.amount) FROM ticket_ledger l" +
+                "    WHERE l.booking_id=b.id AND l.party_type='BUY_AGENT'" +
+                "    AND COALESCE(l.bill_amount,0)=0),0)" +
+                " ) AS pending_balance" +
+                " FROM ticket_booking b" +
+                " LEFT JOIN ticket_agent ta ON ta.id = b.buy_agent_id" +
+                " LEFT JOIN ticket_city cf ON cf.id = b.oneway_from_id" +
+                " LEFT JOIN ticket_city ct ON ct.id = b.oneway_to_id" +
+                " WHERE b.is_cancelled = 1 AND b.buy_agent_id IS NOT NULL" + agFilter +
+                " HAVING ABS(pending_balance) > 0.005" +
+                " ORDER BY b.id DESC";
+            pt = con.prepareStatement(sql);
+            if (agentId > 0) pt.setInt(1, agentId);
+            rs = pt.executeQuery();
+            while (rs.next()) {
+                Vector row = new Vector();
+                for (int i = 1; i <= 11; i++) row.add(rs.getObject(i));
+                result.add(row);
+            }
+        } else { // SELL
+            String agFilter = agentId > 0 ? " AND b.sell_agent_id = ?" : "";
+            String sql =
+                "SELECT b.id, COALESCE(b.ticket_no,'-'), COALESCE(b.pnr,'-')," +
+                " COALESCE(cf.name,'') AS ow_from, COALESCE(ct.name,'') AS ow_to," +
+                " DATE_FORMAT(b.booking_date,'%d/%m/%Y') AS bdate," +
+                " CASE WHEN b.sell_agent_id IS NOT NULL THEN 'SELL_AGENT' ELSE 'CUSTOMER' END AS party_type," +
+                " CASE WHEN b.sell_agent_id IS NOT NULL THEN COALESCE(ta.name,'-')" +
+                "      ELSE COALESCE(b.customer_name,'-') END AS party_display," +
+                " COALESCE(b.sell_agent_id,0) AS agent_id," +
+                " COALESCE(b.customer_name,'') AS party_name," +
+                " (CASE WHEN b.sell_agent_id IS NOT NULL THEN" +
+                "   COALESCE(b.sell_paid_amount,0) - COALESCE(b.cancel_charge_sell,0) - COALESCE(b.refund_to_sell,0)" +
+                "   - COALESCE((SELECT SUM(l.amount) FROM ticket_ledger l" +
+                "     WHERE l.booking_id=b.id AND l.party_type='SELL_AGENT'" +
+                "     AND COALESCE(l.bill_amount,0)=0),0)" +
+                "  ELSE" +
+                "   COALESCE(b.cust_paid_amount,0) - COALESCE(b.cancel_charge_sell,0) - COALESCE(b.refund_to_sell,0)" +
+                "   - COALESCE((SELECT SUM(l.amount) FROM ticket_ledger l" +
+                "     WHERE l.booking_id=b.id AND l.party_type='CUSTOMER'" +
+                "     AND COALESCE(l.bill_amount,0)=0),0)" +
+                "  END) AS pending_balance" +
+                " FROM ticket_booking b" +
+                " LEFT JOIN ticket_agent ta ON ta.id = b.sell_agent_id" +
+                " LEFT JOIN ticket_city cf ON cf.id = b.oneway_from_id" +
+                " LEFT JOIN ticket_city ct ON ct.id = b.oneway_to_id" +
+                " WHERE b.is_cancelled = 1" +
+                "   AND (b.sell_agent_id IS NOT NULL OR COALESCE(b.cust_paid_amount,0)>0" +
+                "        OR COALESCE(b.sell_paid_amount,0)>0)" + agFilter +
+                " HAVING ABS(pending_balance) > 0.005" +
+                " ORDER BY b.id DESC";
+            pt = con.prepareStatement(sql);
+            if (agentId > 0) pt.setInt(1, agentId);
+            rs = pt.executeQuery();
+            while (rs.next()) {
+                Vector row = new Vector();
+                for (int i = 1; i <= 11; i++) row.add(rs.getObject(i));
+                result.add(row);
+            }
         }
     } catch (Exception e) { e.printStackTrace(); }
     finally {
@@ -7434,7 +7694,6 @@ public Vector getAgentStatement(String fromDate, String toDate, int agentId) {
             " a.name AS agent_name" +
             " FROM ticket_ledger l LEFT JOIN ticket_agent a ON a.id = l.agent_id" +
             " WHERE l.agent_id = ? AND DATE(l.transaction_date) < ?" +
-            " AND EXISTS (SELECT 1 FROM ticket_booking bc WHERE bc.id=l.booking_id AND COALESCE(bc.is_cancelled,0)=0)" +
             " GROUP BY a.name");
         pt.setInt(1, agentId);
         pt.setString(2, fromDate);
@@ -7473,6 +7732,8 @@ public Vector getAgentStatement(String fromDate, String toDate, int agentId) {
         openRow.add(""); openRow.add(""); openRow.add(""); openRow.add("");
         openRow.add(agentName);
         openRow.add("");
+        openRow.add(""); // [13] remarks
+        openRow.add(""); // [14] bill_amount
         result.add(openRow);
 
         // Step 3: Period transactions (subquery pre-aggregates passengers)
@@ -7492,7 +7753,6 @@ public Vector getAgentStatement(String fromDate, String toDate, int agentId) {
             " LEFT JOIN (SELECT booking_id, GROUP_CONCAT(passenger_name ORDER BY id SEPARATOR '||') AS passengers" +
             "            FROM ticket_passenger GROUP BY booking_id) pax ON pax.booking_id = b.id" +
             " WHERE l.agent_id = ? AND DATE(l.transaction_date) BETWEEN ? AND ?" +
-            " AND COALESCE(b.is_cancelled,0)=0" +
             " ORDER BY l.transaction_date ASC, l.id ASC";
         pt = con.prepareStatement(sql);
         pt.setInt(1, agentId);
@@ -7579,6 +7839,7 @@ public Vector getAgentStatement(String fromDate, String toDate, int agentId) {
             String balDir = runBal >= 0.005 ? "DR" : (runBal <= -0.005 ? "CR" : "NIL");
             String pType  = rs.getString("party_type"); if (pType == null) pType = "";
 
+            String rawRemarks = rs.getString("remarks"); if (rawRemarks == null) rawRemarks = "";
             Vector row = new Vector();
             row.add("TXN");
             row.add(rs.getString("txn_date"));
@@ -7593,6 +7854,8 @@ public Vector getAgentStatement(String fromDate, String toDate, int agentId) {
             row.add(extraPax);
             row.add(agentName);
             row.add(pType);
+            row.add(rawRemarks); // [13] remarks
+            row.add(billAmt > 0.005 ? String.format("%.2f", billAmt) : ""); // [14] bill_amount
             result.add(row);
         }
 
@@ -7607,6 +7870,8 @@ public Vector getAgentStatement(String fromDate, String toDate, int agentId) {
         totRow.add(balStr); totRow.add(balDir);
         totRow.add(""); totRow.add(""); totRow.add(""); totRow.add("");
         totRow.add(agentName); totRow.add("");
+        totRow.add(""); // [13] remarks
+        totRow.add(""); // [14] bill_amount
         result.add(totRow);
 
     } catch (Exception e) {

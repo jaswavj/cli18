@@ -26,9 +26,9 @@ Vector allRows  = billing.getTicketLedgerReport(fromDate, toDate, agentFilterId)
 Vector rows = new Vector();
 for (int _fi = 0; _fi < allRows.size(); _fi++) {
     Vector _fr = (Vector) allRows.get(_fi);
-    String _ft = _fr.get(5) != null ? _fr.get(5).toString() : "DR";
-    double _fb = _fr.get(8) != null ? Double.parseDouble(_fr.get(8).toString()) : 0;
-    if (_fb <= 0.005) continue; // skip settled
+    double _fb = _fr.get(7) != null ? Double.parseDouble(_fr.get(7).toString()) : 0;
+    if (Math.abs(_fb) <= 0.005) continue; // skip settled
+    String _ft = (_fb >= 0) ? "CR" : "DR";
     if (txnFilter.isEmpty() || txnFilter.equals(_ft)) rows.add(_fr);
 }
 
@@ -38,9 +38,9 @@ DecimalFormat df = new DecimalFormat("0.00");
 double totalBill = 0, totalPaid = 0, totalBal = 0;
 for (int i = 0; i < rows.size(); i++) {
     Vector r = (Vector) rows.get(i);
-    double bill = r.get(6) != null ? Double.parseDouble(r.get(6).toString()) : 0;
-    double paid = r.get(7) != null ? Double.parseDouble(r.get(7).toString()) : 0;
-    double bal  = r.get(8) != null ? Double.parseDouble(r.get(8).toString()) : 0;
+    double bill = r.get(5) != null ? Math.abs(Double.parseDouble(r.get(5).toString())) : 0;
+    double paid = r.get(6) != null ? Math.abs(Double.parseDouble(r.get(6).toString())) : 0;
+    double bal  = r.get(7) != null ? Math.abs(Double.parseDouble(r.get(7).toString())) : 0;
     totalBill += bill; totalPaid += paid; totalBal += bal;
 }
 %>
@@ -244,15 +244,16 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
             String pnr        = r.get(2) != null ? r.get(2).toString() : "-";
             String partyType  = r.get(3) != null ? r.get(3).toString() : "";
             String partyDisp  = r.get(4) != null ? r.get(4).toString() : "-";
-            String txnType    = r.get(5) != null ? r.get(5).toString() : "";
-            double bill  = r.get(6) != null ? Double.parseDouble(r.get(6).toString()) : 0;
-            double paid  = r.get(7) != null ? Double.parseDouble(r.get(7).toString()) : 0;
-            double bal   = r.get(8) != null ? Double.parseDouble(r.get(8).toString()) : 0;
-            String fdate = r.get(9) != null ? r.get(9).toString() : "";
-            String agentIdRaw    = r.get(10) != null ? r.get(10).toString() : "0";
-            String pName          = r.get(11) != null ? r.get(11).toString() : "";
-            String payModeName    = r.get(12) != null ? r.get(12).toString() : "";
-            String lastTxnNo      = r.get(13) != null ? r.get(13).toString() : "";
+            double netBal     = r.get(7) != null ? Double.parseDouble(r.get(7).toString()) : 0;
+            String txnType    = (netBal >= 0) ? "CR" : "DR";
+            double bill  = r.get(5) != null ? Math.abs(Double.parseDouble(r.get(5).toString())) : 0;
+            double paid  = r.get(6) != null ? Math.abs(Double.parseDouble(r.get(6).toString())) : 0;
+            double bal   = Math.abs(netBal);
+            String fdate = r.get(8) != null ? r.get(8).toString() : "";
+            String agentIdRaw    = r.get(9)  != null ? r.get(9).toString()  : "0";
+            String pName         = r.get(10) != null ? r.get(10).toString() : "";
+            String payModeName   = r.get(11) != null ? r.get(11).toString() : "";
+            String lastTxnNo     = r.get(12) != null ? r.get(12).toString() : "";
 
             String ptBadge = "badge-cust";
             String ptLabel = partyType;

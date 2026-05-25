@@ -365,6 +365,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
               <th style="padding:7px 10px;color:#fff;font-weight:700;text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;">Mode</th>
               <th style="padding:7px 10px;color:#fff;font-weight:700;text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;">Txn No</th>
               <th style="padding:7px 10px;color:#fff;font-weight:700;text-align:right;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;">Amount</th>
+              <th style="padding:7px 10px;color:#fff;font-weight:700;text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;">Remarks</th>
             </tr>
           </thead>
           <tbody>
@@ -380,6 +381,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
               String lMode      = lh.get(6) != null ? lh.get(6).toString() : "";
               String lTxnNo     = lh.get(7) != null ? lh.get(7).toString() : "";
               String lDate      = lh.get(8) != null ? lh.get(8).toString() : "-";
+              String lRemarks   = lh.get(9) != null ? lh.get(9).toString() : "";
               String lPtBadgeClr = "BUY_AGENT".equals(lPartyType) ? "#bf6000" : "SELL_AGENT".equals(lPartyType) ? "#1b5e20" : "#0d47a1";
               String lPtLabel = "BUY_AGENT".equals(lPartyType) ? "Buy Agent" : "SELL_AGENT".equals(lPartyType) ? "Sell Agent" : "Customer";
               String lAmtClr = "CR".equals(lTxnType) ? "#059669" : "#dc2626";
@@ -397,6 +399,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
             <td style="padding:7px 10px;font-size:11px;"><%=lMode.isEmpty() ? "-" : lMode%></td>
             <td style="padding:7px 10px;font-size:11px;font-weight:600;color:#5c4d8a;"><%=lTxnNo.isEmpty() ? "<span style='color:#94a3b8;'>\u2014</span>" : lTxnNo%></td>
             <td style="padding:7px 10px;text-align:right;font-weight:700;color:<%=lAmtClr%>;">&#8377;<%=dfLh.format(lAmt)%></td>
+            <td style="padding:7px 10px;font-size:11px;color:#475569;"><%=lRemarks.isEmpty() ? "<span style='color:#94a3b8;'>\u2014</span>" : lRemarks%></td>
           </tr>
           <%}%>
           </tbody>

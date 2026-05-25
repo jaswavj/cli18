@@ -29,18 +29,6 @@ try {
     }
     if (txnType == null || txnType.isEmpty()) txnType = "DR";
 
-    // Block collection on cancelled bookings
-    java.sql.Connection _cc = null; java.sql.PreparedStatement _cp = null; java.sql.ResultSet _cr = null;
-    try {
-        _cc = util.DBConnectionManager.getConnectionFromPool();
-        _cp = _cc.prepareStatement("SELECT COALESCE(is_cancelled,0) FROM ticket_booking WHERE id=? LIMIT 1");
-        _cp.setInt(1, bookingId); _cr = _cp.executeQuery();
-        if (_cr.next() && _cr.getInt(1) == 1) { out.print("ERROR:Booking is cancelled"); return; }
-    } finally {
-        try { if (_cr!=null) _cr.close(); } catch (Exception _e) {}
-        try { if (_cp!=null) _cp.close(); } catch (Exception _e) {}
-        try { if (_cc!=null) _cc.close(); } catch (Exception _e) {}
-    }
     String result = billing.collectTicketBalance(bookingId, partyType, agentId, partyName, txnType, amount, payModeId, collectionDate, transactionNo);
     out.print(result);
 } catch (Exception e) {

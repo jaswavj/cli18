@@ -27,7 +27,15 @@ try {
     }
     int bookingId = Integer.parseInt(bookingIdStr.trim());
 
-    billing.cancelTicketBooking(bookingId, userId, reason);
+    // ── Cancel charge params (refund auto-calculated; entries inserted as pending) ──
+    String ccBuyStr  = request.getParameter("cancelChargeBuy");
+    String ccSellStr = request.getParameter("cancelChargeSell");
+    Double  cancelChargeBuy   = (ccBuyStr  != null && !ccBuyStr.trim().isEmpty())  ? Double.parseDouble(ccBuyStr.trim())  : null;
+    Double  cancelChargeSell  = (ccSellStr != null && !ccSellStr.trim().isEmpty()) ? Double.parseDouble(ccSellStr.trim()) : null;
+
+    billing.cancelTicketBooking(bookingId, userId, reason,
+        cancelChargeBuy, null,
+        cancelChargeSell, null);
     out.print("SUCCESS");
 
 } catch (Exception e) {

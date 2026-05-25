@@ -301,6 +301,8 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
             String flightInf = r.get(9) != null ? r.get(9).toString() : "";
             String extraPax  = r.get(10) != null ? r.get(10).toString() : "";
             String pType     = r.get(12) != null ? r.get(12).toString() : "";
+            String remarks   = r.get(13) != null ? r.get(13).toString() : "";
+            String billAmt   = r.get(14) != null ? r.get(14).toString() : "";
 
             String balCls = "DR".equals(balDir) ? "bal-dr" : "CR".equals(balDir) ? "bal-cr" : "bal-nil";
             String balDisplay = "NIL".equals(balDir) ? "0.00" : balance + " " + balDir;
@@ -332,7 +334,14 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
                 else if ("SELL_AGENT".equals(pType)) { badgeCls="badge-sell"; badgeLbl="Sell"; }
                 else if ("CUSTOMER".equals(pType))   { badgeCls="badge-cust"; badgeLbl="Cust"; }
         %>
-        <tr>
+        <tr style="cursor:pointer;" onclick="showRemarkModal(<%=i%>)"
+            data-vou="<%=vouNo.replace("\"","&quot;")%>"
+            data-date="<%=txnDate%>"
+            data-part="<%=partMain.replace("\"","&quot;").replace("'","&#39;")%>"
+            data-flight="<%=flightInf.replace("\"","&quot;")%>"
+            data-route="<%=route%>"
+            data-bill="<%=billAmt%>"
+            data-remark="<%=remarks.replace("\"","&quot;").replace("'","&#39;")%>">
             <td style="white-space:nowrap;color:var(--muted);"><%=txnDate%></td>
             <td style="white-space:nowrap;font-size:11px;">
                 <%=vouNo%>
@@ -376,5 +385,39 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
 
 </div><!-- tw-body -->
 </div><!-- tw -->
+
+<script>
+function showRemarkModal(idx) {
+    var row = document.querySelector('tr[onclick="showRemarkModal(' + idx + ')"]');
+    if (!row) return;
+    var vou     = row.dataset.vou     || '';
+    var date    = row.dataset.date    || '';
+    var part    = row.dataset.part    || '';
+    var flight  = row.dataset.flight  || '';
+    var route   = row.dataset.route   || '';
+    var bill    = row.dataset.bill    || '';
+    var remark  = row.dataset.remark  || '';
+
+    var html = '<table style="width:100%;border-collapse:collapse;font-size:13px;text-align:left;">';
+    if (vou)    html += '<tr><td style="padding:4px 8px;color:#64748b;width:40%">Voucher</td><td style="padding:4px 8px;font-weight:600;">' + vou + '</td></tr>';
+    if (date)   html += '<tr><td style="padding:4px 8px;color:#64748b;">Date</td><td style="padding:4px 8px;">' + date + '</td></tr>';
+    if (part)   html += '<tr><td style="padding:4px 8px;color:#64748b;">Particulars</td><td style="padding:4px 8px;">' + part + '</td></tr>';
+    if (route)  html += '<tr><td style="padding:4px 8px;color:#5c4d8a;font-weight:600;">Route</td><td style="padding:4px 8px;color:#5c4d8a;font-weight:600;">' + route + '</td></tr>';
+    if (flight) html += '<tr><td style="padding:4px 8px;color:#64748b;">Flight Info</td><td style="padding:4px 8px;">' + flight + '</td></tr>';
+    if (bill)   html += '<tr><td style="padding:4px 8px;color:#64748b;">Bill Amount</td><td style="padding:4px 8px;font-weight:700;color:#b45309;">&#8377; ' + bill + '</td></tr>';
+    html += '<tr><td style="padding:8px 8px 4px;color:#64748b;vertical-align:top;">Remarks</td><td style="padding:8px 8px 4px;">';
+    html += remark ? ('<span style="font-weight:600;color:#0f172a;">' + remark + '</span>') : '<span style="color:#94a3b8;font-style:italic;">No remarks</span>';
+    html += '</td></tr></table>';
+
+    Swal.fire({
+        title: 'Transaction Detail',
+        html: html,
+        icon: null,
+        confirmButtonText: 'Close',
+        confirmButtonColor: '#1a2744',
+        width: 420
+    });
+}
+</script>
 </body>
 </html>

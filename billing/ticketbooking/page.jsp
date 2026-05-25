@@ -334,7 +334,7 @@ html,body { height:100%; font-family:'Segoe UI',system-ui,sans-serif; font-size:
         <div class="flight-strip">
           <div class="fg" style="width:120px;">
             <div class="fg-lbl fg-lbl-dark">Travel Date</div>
-            <input id="owDate" type="date" class="fg-inp">
+            <input id="owDate" type="date" class="fg-inp" onchange="checkTravelDateChange()">
           </div>
           <div class="fg" style="width:105px;">
             <div class="fg-lbl fg-lbl-dark">Time</div>
@@ -381,7 +381,7 @@ html,body { height:100%; font-family:'Segoe UI',system-ui,sans-serif; font-size:
           <div class="flight-strip return-strip">
             <div class="fg" style="width:120px;">
               <div class="fg-lbl fg-lbl-dark">Return Date</div>
-              <input id="retDate" type="date" class="fg-inp">
+              <input id="retDate" type="date" class="fg-inp" onchange="checkTravelDateChange()">
             </div>
             <div class="fg" style="width:105px;">
               <div class="fg-lbl fg-lbl-dark">Time</div>
@@ -498,6 +498,40 @@ html,body { height:100%; font-family:'Segoe UI',system-ui,sans-serif; font-size:
                   <input id="buyTxnNo" type="text" class="fg-inp" placeholder="Txn / Ref No">
                 </div>
               </div>
+
+              <!-- DATE CHANGE CHARGE – Buy (edit mode only) -->
+              <div id="buyDateChangeWrap" style="display:none;margin-top:10px;padding-top:10px;border-top:1px dashed #ffe0b2;">
+                <div style="font-size:10px;font-weight:800;text-transform:uppercase;color:#e65100;letter-spacing:.5px;margin-bottom:8px;">
+                  <i class="fa-solid fa-calendar-xmark" style="margin-right:4px;"></i>Date Change Charge
+                </div>
+                <div class="txn-row">
+                  <div class="fg" style="width:110px;">
+                    <div class="fg-lbl fg-lbl-dark">Charge Amount</div>
+                    <input id="buyDCAmount" type="number" step="0.01" class="fg-inp" placeholder="0.00" oninput="calcDCBal('buy')">
+                  </div>
+                  <div class="fg" style="width:100px;">
+                    <div class="fg-lbl fg-lbl-dark">Paid Amount</div>
+                    <input id="buyDCPaid" type="number" step="0.01" class="fg-inp" placeholder="0.00" oninput="calcDCBal('buy')">
+                  </div>
+                  <div class="bal-display">
+                    <div class="fg-lbl fg-lbl-dark">Balance</div>
+                    <div class="bal-amt bal-zero" id="buyDCBalDisp">₹0.00</div>
+                  </div>
+                  <div class="fg" style="flex:1;min-width:120px;">
+                    <div class="fg-lbl fg-lbl-dark">Payment Mode</div>
+                    <select id="buyDCMode" class="fg-sel" onchange="handleModeChange('buyDCMode','buyDCTxnRow','buyDCTxnNo')">
+                      <option value="">— Mode —</option>
+                      <%for (int dc1=0;dc1<payModes.size();dc1++){Vector dpm1=(Vector)payModes.elementAt(dc1);%>
+                      <option value="<%=dpm1.get(0)%>"><%=dpm1.get(1)%></option>
+                      <%}%>
+                    </select>
+                  </div>
+                  <div class="fg" id="buyDCTxnRow" style="display:none;min-width:140px;">
+                    <div class="fg-lbl fg-lbl-dark">Transaction No</div>
+                    <input id="buyDCTxnNo" type="text" class="fg-inp" placeholder="Txn / Ref No">
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -598,6 +632,40 @@ html,body { height:100%; font-family:'Segoe UI',system-ui,sans-serif; font-size:
                 </div>
               </div>
 
+              <!-- DATE CHANGE CHARGE – Sell (edit mode only) -->
+              <div id="sellDateChangeWrap" style="display:none;margin-top:10px;padding-top:10px;border-top:1px dashed #c8e6c9;">
+                <div style="font-size:10px;font-weight:800;text-transform:uppercase;color:#1b5e20;letter-spacing:.5px;margin-bottom:8px;">
+                  <i class="fa-solid fa-calendar-xmark" style="margin-right:4px;"></i>Date Change Charge
+                </div>
+                <div class="txn-row">
+                  <div class="fg" style="width:110px;">
+                    <div class="fg-lbl fg-lbl-dark">Charge Amount</div>
+                    <input id="sellDCAmount" type="number" step="0.01" class="fg-inp" placeholder="0.00" oninput="calcDCBal('sell')">
+                  </div>
+                  <div class="fg" style="width:100px;">
+                    <div class="fg-lbl fg-lbl-dark">Paid Amount</div>
+                    <input id="sellDCPaid" type="number" step="0.01" class="fg-inp" placeholder="0.00" oninput="calcDCBal('sell')">
+                  </div>
+                  <div class="bal-display">
+                    <div class="fg-lbl fg-lbl-dark">Balance</div>
+                    <div class="bal-amt bal-zero" id="sellDCBalDisp">₹0.00</div>
+                  </div>
+                  <div class="fg" style="flex:1;min-width:120px;">
+                    <div class="fg-lbl fg-lbl-dark">Payment Mode</div>
+                    <select id="sellDCMode" class="fg-sel" onchange="handleModeChange('sellDCMode','sellDCTxnRow','sellDCTxnNo')">
+                      <option value="">— Mode —</option>
+                      <%for (int dc2=0;dc2<payModes.size();dc2++){Vector dpm2=(Vector)payModes.elementAt(dc2);%>
+                      <option value="<%=dpm2.get(0)%>"><%=dpm2.get(1)%></option>
+                      <%}%>
+                    </select>
+                  </div>
+                  <div class="fg" id="sellDCTxnRow" style="display:none;min-width:140px;">
+                    <div class="fg-lbl fg-lbl-dark">Transaction No</div>
+                    <input id="sellDCTxnNo" type="text" class="fg-inp" placeholder="Txn / Ref No">
+                  </div>
+                </div>
+              </div>
+
             </div>
           </div>
 
@@ -613,6 +681,13 @@ html,body { height:100%; font-family:'Segoe UI',system-ui,sans-serif; font-size:
 <script>
 const ctx = '<%=ctx%>';
 let cityCache = {};   // text → {id, isNew}
+
+// Payment modes for cancel dialog
+const payModeOptions = [
+  <%for (int pi=0;pi<payModes.size();pi++){Vector ppm=(Vector)payModes.elementAt(pi);%>
+  {id:'<%=ppm.get(0)%>',name:'<%=ppm.get(1)%>'},
+  <%}%>
+];
 
 // ══════════════════════════════════════════
 //  City Autocomplete (jQuery UI)
@@ -763,6 +838,16 @@ function calcBal(pfx) {
     disp.className = 'bal-amt ' + (bal <= 0 ? 'bal-zero' : 'bal-due');
 }
 
+function calcDCBal(pfx) {
+    const amt  = parseFloat(document.getElementById(pfx + 'DCAmount')?.value) || 0;
+    const paid = parseFloat(document.getElementById(pfx + 'DCPaid')?.value)   || 0;
+    const bal  = amt - paid;
+    const disp = document.getElementById(pfx + 'DCBalDisp');
+    if (!disp) return;
+    disp.textContent = '₹' + Math.abs(bal).toFixed(2);
+    disp.className = 'bal-amt ' + (bal <= 0 ? 'bal-zero' : 'bal-due');
+}
+
 // ══════════════════════════════════════════
 //  Return section toggle
 // ══════════════════════════════════════════
@@ -827,7 +912,45 @@ function setSellType(type) {
 // ══════════════════════════════════════════
 //  Edit Mode state
 // ══════════════════════════════════════════
-let editBookingId = null;
+let editBookingId    = null;
+let editHasBuy       = false;
+let editHasSell      = false;
+let editSellType     = 'customer'; // 'customer' | 'agent'
+let editBuyAgentName = '';
+let editSellName     = '';
+let editOrigOwDate   = '';
+let editOrigRetDate  = '';
+
+function _resetDCSections() {
+    document.getElementById('buyDateChangeWrap').style.display  = 'none';
+    document.getElementById('sellDateChangeWrap').style.display = 'none';
+    ['buyDCAmount','buyDCPaid','buyDCTxnNo','sellDCAmount','sellDCPaid','sellDCTxnNo'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.value = '';
+    });
+    ['buyDCMode','sellDCMode'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.value = '';
+    });
+    ['buyDCTxnRow','sellDCTxnRow'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.style.display = 'none';
+    });
+    ['buyDCBalDisp','sellDCBalDisp'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.textContent = '\u20b90.00'; el.className = 'bal-amt bal-zero'; }
+    });
+}
+
+function checkTravelDateChange() {
+    if (!editBookingId) return;
+    const curOwDate  = document.getElementById('owDate').value;
+    const curRetDate = document.getElementById('retDate').value;
+    const dateChanged = (curOwDate !== editOrigOwDate) || (curRetDate !== editOrigRetDate);
+    if (dateChanged) {
+        if (editHasBuy)  document.getElementById('buyDateChangeWrap').style.display  = '';
+        if (editHasSell) document.getElementById('sellDateChangeWrap').style.display = '';
+    } else {
+        _resetDCSections();
+    }
+}
 
 function handlePNRKeydown(e) {
     if (e.key === 'Enter') {
@@ -871,6 +994,9 @@ function fetchPNRForEdit(pnr) {
 
 function populateEditForm(d) {
     editBookingId = d.id;
+    // Store original travel dates for date-change detection (set BEFORE populating fields)
+    editOrigOwDate  = d.owDate  || '';
+    editOrigRetDate = d.retDate || '';
 
     // Header fields
     document.getElementById('pnr').value = d.pnr || '';
@@ -927,9 +1053,13 @@ function populateEditForm(d) {
         buyPaidEl.readOnly = true;
         buyPaidEl.style.background = '#e9ecef';
         calcBal('buy');
+        editHasBuy = true;
+        editBuyAgentName = d.buyAgentName || '';
     } else {
         document.getElementById('buyToggle').checked = false;
         toggleBuyBlock(false);
+        editHasBuy = false;
+        editBuyAgentName = '';
     }
 
     // Sell
@@ -948,6 +1078,7 @@ function populateEditForm(d) {
         sellPaidEl.readOnly = true;
         sellPaidEl.style.background = '#e9ecef';
         calcBal('sell');
+        editHasSell = true; editSellType = 'agent'; editSellName = d.sellAgentName || '';
     } else if (d.custAmount && d.custAmount !== '') {
         document.getElementById('sellToggle').checked = true;
         toggleSellBlock(true);
@@ -963,9 +1094,11 @@ function populateEditForm(d) {
         custPaidEl.readOnly = true;
         custPaidEl.style.background = '#e9ecef';
         calcBal('cust');
+        editHasSell = true; editSellType = 'customer'; editSellName = d.custName || '';
     } else {
         document.getElementById('sellToggle').checked = false;
         toggleSellBlock(false);
+        editHasSell = false; editSellType = 'customer'; editSellName = '';
     }
 
     // Edit mode banner
@@ -993,6 +1126,10 @@ function setEditMode(on) {
     document.getElementById('cancelBookingBtn').style.display = on ? 'inline-flex' : 'none';
     if (!on) {
         editBookingId = null;
+        editHasBuy = false; editHasSell = false;
+        editSellType = 'customer'; editBuyAgentName = ''; editSellName = '';
+        editOrigOwDate = ''; editOrigRetDate = '';
+        _resetDCSections();
         const sb = document.getElementById('saveBtn');
         sb.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save Booking';
         sb.style.background = '';
@@ -1006,48 +1143,99 @@ function setEditMode(on) {
 }
 
 function exitEditMode() {
-    if (!confirm('Exit edit mode? Unsaved changes will be lost.')) return;
-    setEditMode(false);
-    const sb = document.getElementById('saveBtn');
-    sb.disabled = false;
-    sb.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save Booking';
-    sb.style.background = '';
-    sb.style.borderColor = '';
-    // clear the form manually without the confirm prompt
-    document.getElementById('pnr').value = '';
-    ['owDate','owTime','owFrom','owFromId','owTo','owToId','owFlightNo','owAirlines',
-     'retDate','retTime','retFrom','retFromId','retTo','retToId','retFlightNo','retAirlines'].forEach(id => {
-        const el = document.getElementById(id); if (el) el.value = '';
+    Swal.fire({
+        title: 'Exit Edit Mode?',
+        text: 'Unsaved changes will be lost.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, Exit',
+        cancelButtonText: 'Stay',
+        confirmButtonColor: '#dc2626',
+    }).then(result => {
+        if (!result.isConfirmed) return;
+        setEditMode(false);
+        const sb = document.getElementById('saveBtn');
+        sb.disabled = false;
+        sb.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save Booking';
+        sb.style.background = '';
+        sb.style.borderColor = '';
+        document.getElementById('pnr').value = '';
+        ['owDate','owTime','owFrom','owFromId','owTo','owToId','owFlightNo','owAirlines',
+         'retDate','retTime','retFrom','retFromId','retTo','retToId','retFlightNo','retAirlines'].forEach(id => {
+            const el = document.getElementById(id); if (el) el.value = '';
+        });
+        document.getElementById('retToggle').checked = false;
+        toggleReturn(false);
+        document.getElementById('noOfSeats').value = 1;
+        document.getElementById('phone').value = '';
+        renderPassengers();
+        document.getElementById('buyToggle').checked = true;
+        toggleBuyBlock(true);
+        ['buyAgent','buyAmount','buyMode','buyTxnNo','buyPaidAmount','custName','custAmount','custMode','custTxnNo','custPaidAmount','sellAgent','sellAmount','sellMode','sellTxnNo','sellPaidAmount'].forEach(id => {
+            const el = document.getElementById(id); if (el) { el.value = ''; el.readOnly = false; el.style.background = ''; }
+        });
+        ['buyTxnRow','custTxnRow','sellTxnRow'].forEach(id => {
+            const el = document.getElementById(id); if (el) el.style.display = 'none';
+        });
+        ['buyBalDisp','custBalDisp','sellBalDisp'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) { el.textContent = '\u20b90.00'; el.className = 'bal-amt bal-zero'; }
+        });
+        document.getElementById('sellToggle').checked = true;
+        toggleSellBlock(true);
+        setSellType('customer');
+        document.getElementById('printBtn').style.display = 'none';
     });
-    document.getElementById('retToggle').checked = false;
-    toggleReturn(false);
-    document.getElementById('noOfSeats').value = 1;
-    document.getElementById('phone').value = '';
-    renderPassengers();
-    document.getElementById('buyToggle').checked = true;
-    toggleBuyBlock(true);
-    ['buyAgent','buyAmount','buyMode','buyTxnNo','buyPaidAmount','custName','custAmount','custMode','custTxnNo','custPaidAmount','sellAgent','sellAmount','sellMode','sellTxnNo','sellPaidAmount'].forEach(id => {
-        const el = document.getElementById(id); if (el) { el.value = ''; el.readOnly = false; el.style.background = ''; }
-    });
-    ['buyTxnRow','custTxnRow','sellTxnRow'].forEach(id => {
-        const el = document.getElementById(id); if (el) el.style.display = 'none';
-    });
-    ['buyBalDisp','custBalDisp','sellBalDisp'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) { el.textContent = '\u20b90.00'; el.className = 'bal-amt bal-zero'; }
-    });
-    document.getElementById('sellToggle').checked = true;
-    toggleSellBlock(true);
-    setSellType('customer');
-    document.getElementById('printBtn').style.display = 'none';
 }
 
 function cancelBookingAction() {
     if (!editBookingId) return;
+
+    const _modeOpts = () => {
+        let s = '<option value="">— Mode —</option>';
+        payModeOptions.forEach(pm => { s += `<option value="${pm.id}">${pm.name}</option>`; });
+        return s;
+    };
+    const _sel = (id) => `<select id="${id}" style="height:30px;border:1.5px solid #d1d9e6;border-radius:5px;padding:0 9px;font-size:12px;width:100%;margin-top:4px;">${_modeOpts()}</select>`;
+    const _inp = (id) => `<input id="${id}" type="number" step="0.01" placeholder="0.00" style="height:30px;border:1.5px solid #d1d9e6;border-radius:5px;padding:0 9px;font-size:12px;width:100%;margin-top:4px;">`;
+
+    let buyHtml = '';
+    if (editHasBuy) {
+        const agLbl = editBuyAgentName ? ` <span style="font-weight:normal;color:#666;">(${editBuyAgentName})</span>` : '';
+        buyHtml = `
+        <div style="margin-top:12px;padding:10px;background:#fff3e0;border-radius:6px;border:1px solid #ffe0b2;">
+          <div style="font-size:11px;font-weight:800;color:#e65100;margin-bottom:8px;">
+            <i class="fa-solid fa-arrow-down-to-bracket"></i> Buy Agent Cancel Details${agLbl}
+          </div>
+          <div style="margin-top:4px;">
+            <label style="font-size:10px;font-weight:700;color:#555;display:block;">Cancel Charge by Agent</label>${_inp('cancelChargeBuy')}
+          </div>
+        </div>`;
+    }
+
+    let sellHtml = '';
+    if (editHasSell) {
+        const sLabel = editSellType === 'agent' ? 'Sell Agent' : 'Customer';
+        const sName  = editSellName ? ` <span style="font-weight:normal;color:#666;">(${editSellName})</span>` : '';
+        sellHtml = `
+        <div style="margin-top:10px;padding:10px;background:#e8f5e9;border-radius:6px;border:1px solid #c8e6c9;">
+          <div style="font-size:11px;font-weight:800;color:#1b5e20;margin-bottom:8px;">
+            <i class="fa-solid fa-arrow-up-from-bracket"></i> ${sLabel} Cancel Details${sName}
+          </div>
+          <div style="margin-top:4px;">
+            <label style="font-size:10px;font-weight:700;color:#555;display:block;">Cancel Charge to ${sLabel}</label>${_inp('cancelChargeSell')}
+          </div>
+        </div>`;
+    }
+
     Swal.fire({
         title: 'Cancel Booking?',
-        html: '<p style="margin-bottom:10px;">This action cannot be undone. Enter a reason:</p>' +
-              '<textarea id="cancelReason" rows="3" style="width:100%;border:1px solid #ccc;border-radius:4px;padding:8px;font-size:13px;" placeholder="Reason for cancellation..."></textarea>',
+        width: 520,
+        html: `<div style="text-align:left;">
+          <p style="margin-bottom:8px;font-size:13px;color:#555;">This action cannot be undone. Enter a reason and any cancellation charges:</p>
+          <textarea id="cancelReason" rows="2" style="width:100%;border:1.5px solid #d1d9e6;border-radius:5px;padding:8px;font-size:12px;resize:vertical;" placeholder="Reason for cancellation..."></textarea>
+          ${buyHtml}${sellHtml}
+        </div>`,
         icon: 'warning',
         showCancelButton: true,
         confirmButtonText: '<i class="fa-solid fa-ban"></i> Yes, Cancel Booking',
@@ -1056,14 +1244,20 @@ function cancelBookingAction() {
         preConfirm: () => {
             const reason = document.getElementById('cancelReason').value.trim();
             if (!reason) { Swal.showValidationMessage('Please enter a reason for cancellation.'); return false; }
-            return reason;
+            return {
+                reason,
+                cancelChargeBuy:  document.getElementById('cancelChargeBuy')?.value  || '',
+                cancelChargeSell: document.getElementById('cancelChargeSell')?.value || '',
+            };
         }
     }).then(result => {
         if (!result.isConfirmed) return;
-        const reason = result.value;
+        const { reason, cancelChargeBuy, cancelChargeSell } = result.value;
         const params = new URLSearchParams();
         params.set('bookingId', editBookingId);
         params.set('reason', reason);
+        if (cancelChargeBuy)  params.set('cancelChargeBuy',  cancelChargeBuy);
+        if (cancelChargeSell) params.set('cancelChargeSell', cancelChargeSell);
         fetch(ctx + '/ticketbooking/cancelBooking.jsp', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -1260,6 +1454,28 @@ function submitBooking() {
       params.set('buyModeId',     buyPaid > 0 ? document.getElementById('buyMode').value : '');
       params.set('buyPaidAmount', buyPaid > 0 ? String(buyPaid) : '0');
       params.set('buyTxnNo',      buyPaid > 0 ? document.getElementById('buyTxnNo').value.trim() : '');
+    }
+
+    // Date change charges (edit mode only)
+    if (editBookingId) {
+        const buyDCAmt  = parseFloat(document.getElementById('buyDCAmount')?.value) || 0;
+        const buyDCPaid = parseFloat(document.getElementById('buyDCPaid')?.value)   || 0;
+        if (buyDCAmt > 0) {
+            params.set('buyDCAmount', buyDCAmt);
+            params.set('buyDCPaid',   buyDCPaid);
+            params.set('buyDCModeId', document.getElementById('buyDCMode').value);
+            const buyDCTxn = document.getElementById('buyDCTxnNo')?.value.trim() || '';
+            if (buyDCTxn) params.set('buyDCTxnNo', buyDCTxn);
+        }
+        const sellDCAmt  = parseFloat(document.getElementById('sellDCAmount')?.value) || 0;
+        const sellDCPaid = parseFloat(document.getElementById('sellDCPaid')?.value)   || 0;
+        if (sellDCAmt > 0) {
+            params.set('sellDCAmount', sellDCAmt);
+            params.set('sellDCPaid',   sellDCPaid);
+            params.set('sellDCModeId', document.getElementById('sellDCMode').value);
+            const sellDCTxn = document.getElementById('sellDCTxnNo')?.value.trim() || '';
+            if (sellDCTxn) params.set('sellDCTxnNo', sellDCTxn);
+        }
     }
 
     // Sell
