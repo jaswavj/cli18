@@ -228,6 +228,12 @@ for (int i = 0; i < vecPer.size(); i++) {
       </a>
       <div class="collapse sidebar-submenu" id="adminReportMenu">
         <a href="<%=request.getContextPath()%>/admin/companyDetails/page.jsp" class="sidebar-subitem">Company Details</a>
+        <a href="<%=request.getContextPath()%>/admin/deleteTicket/page.jsp" class="sidebar-subitem">
+          <i class="fa-solid fa-trash-can" style="margin-right:5px;font-size:11px;color:#dc2626;"></i>Delete Ticket
+        </a>
+        <a href="<%=request.getContextPath()%>/admin/deleteTicket/report.jsp" class="sidebar-subitem">
+          <i class="fa-solid fa-clock-rotate-left" style="margin-right:5px;font-size:11px;"></i>Delete Log
+        </a>
       </div>
         </div>
     <% } %>

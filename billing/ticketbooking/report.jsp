@@ -222,6 +222,11 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
     <button class="bb bb-outline-white" onclick="window.print()">
       <i class="fa-solid fa-print"></i> Print
     </button>
+    <a class="bb" style="background:#c9922a;color:#fff;border-color:#c9922a;text-decoration:none;"
+       href="<%=ctx%>/ticketbooking/bulkTicketPrint.jsp?dateType=<%=dateType%>&fromDate=<%=fromDate%>&toDate=<%=toDate%>&pmFilter=<%=pmFilterId%>"
+       target="bulkpdf">
+      <i class="fa-solid fa-file-pdf"></i> Download PDF
+    </a>
     <%}%>
   </div>
 
@@ -280,6 +285,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
           <tr>
             <th>#</th>
             <th>PNR</th>
+            <th>Details</th>
             <th>Booking Date</th>
             <th>Travel Date</th>
             <th>Route</th>
@@ -295,7 +301,6 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
             <th>Customer</th>
             <th>Cust Amt</th>
             <th>Cust Mode</th>
-            <th>Details</th>
           </tr>
         </thead>
         <tbody>
@@ -336,6 +341,15 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
           <td>
             <a class="pnr-link" href="<%=ctx%>/ticketbooking/pnrEnquiry.jsp?pnr=<%=rPnr%>" target="_blank"><%=rPnr%></a>
           </td>
+          <td style="white-space:nowrap;">
+            <a href="<%=ctx%>/ticketbooking/ticketPrint.jsp?id=<%=rId%>" target="_blank"
+               class="bb bb-gold" style="height:26px;padding:0 8px;font-size:11px;text-decoration:none;display:inline-flex;align-items:center;gap:4px;margin-right:4px;">
+              <i class="fa-solid fa-print"></i> Receipt
+            </a>
+            <button class="expand-btn" onclick="toggleDetail('<%=detailId%>', this)" title="View full details">
+              <i class="fa-solid fa-chevron-down"></i>
+            </button>
+          </td>
           <td><span class="badge badge-violet"><%=rBkDate%></span></td>
           <td>
             <div style="display:flex;flex-direction:column;gap:3px;">
@@ -364,15 +378,6 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
           <td><%=rCustNm.isEmpty() ? "<span style='color:var(--muted);'>-</span>" : rCustNm%></td>
           <td style="font-weight:700;color:#0d47a1;"><%=rCustAmt.isEmpty() ? "-" : "₹ " + rCustAmt%></td>
           <td style="color:var(--muted);font-size:11px;"><%=rCustMode.isEmpty() ? "-" : rCustMode%></td>
-          <td style="white-space:nowrap;">
-            <a href="<%=ctx%>/ticketbooking/ticketPrint.jsp?id=<%=rId%>" target="_blank"
-               class="bb bb-gold" style="height:26px;padding:0 8px;font-size:11px;text-decoration:none;display:inline-flex;align-items:center;gap:4px;margin-right:4px;">
-              <i class="fa-solid fa-print"></i> Receipt
-            </a>
-            <button class="expand-btn" onclick="toggleDetail('<%=detailId%>', this)" title="View full details">
-              <i class="fa-solid fa-chevron-down"></i>
-            </button>
-          </td>
         </tr>
         <!-- Detail expandable row -->
         <tr class="detail-row" id="<%=detailId%>">

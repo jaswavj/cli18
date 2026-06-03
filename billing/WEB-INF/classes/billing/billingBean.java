@@ -8276,4 +8276,154 @@ public Vector getServiceBillReport(String fromDate, String toDate) {
     return result;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DELETE TICKET  –  hard-delete booking + ledger + passengers, then log
+// ─────────────────────────────────────────────────────────────────────────────
+public void deleteTicketWithLog(int bookingId, int deletedBy) throws Exception {
+    Connection con = null; PreparedStatement pt = null; ResultSet rs = null;
+    try {
+        con = util.DBConnectionManager.getConnectionFromPool();
+        con.setAutoCommit(false);
+
+        // 1. Snapshot the booking for the log
+        pt = con.prepareStatement(
+            "SELECT b.ticket_no, b.pnr, b.booking_date," +
+            " cf.name, ct.name," +
+            " b.oneway_travel_date," +
+            " ba.name, b.buy_amount, sa.name, b.sell_amount," +
+            " b.customer_name, b.customer_amount, b.no_of_seats" +
+            " FROM ticket_booking b" +
+            " LEFT JOIN ticket_city cf  ON cf.id = b.oneway_from_id" +
+            " LEFT JOIN ticket_city ct  ON ct.id = b.oneway_to_id" +
+            " LEFT JOIN ticket_agent ba ON ba.id = b.buy_agent_id" +
+            " LEFT JOIN ticket_agent sa ON sa.id = b.sell_agent_id" +
+            " WHERE b.id = ? LIMIT 1");
+        pt.setInt(1, bookingId);
+        rs = pt.executeQuery();
+        String tktNo = "", pnrVal = "", bookDate = "", owFrom = "", owTo = "", owDate = "";
+        String buyAgent = "", sellAgent = "", custName = "";
+        double buyAmt = 0, sellAmt = 0, custAmt = 0;
+        int seats = 0;
+        if (rs.next()) {
+            tktNo    = rs.getString(1)  != null ? rs.getString(1)  : "";
+            pnrVal   = rs.getString(2)  != null ? rs.getString(2)  : "";
+            bookDate = rs.getString(3)  != null ? rs.getString(3)  : "";
+            owFrom   = rs.getString(4)  != null ? rs.getString(4)  : "";
+            owTo     = rs.getString(5)  != null ? rs.getString(5)  : "";
+            owDate   = rs.getString(6)  != null ? rs.getString(6)  : "";
+            buyAgent = rs.getString(7)  != null ? rs.getString(7)  : "";
+            buyAmt   = rs.getDouble(8);
+            sellAgent= rs.getString(9)  != null ? rs.getString(9)  : "";
+            sellAmt  = rs.getDouble(10);
+            custName = rs.getString(11) != null ? rs.getString(11) : "";
+            custAmt  = rs.getDouble(12);
+            seats    = rs.getInt(13);
+        }
+        rs.close(); pt.close();
+
+        // 2. Collect passenger names
+        pt = con.prepareStatement(
+            "SELECT passenger_name FROM ticket_passenger WHERE booking_id=? ORDER BY seat_no");
+        pt.setInt(1, bookingId);
+        rs = pt.executeQuery();
+        StringBuilder paxNames = new StringBuilder();
+        while (rs.next()) {
+            if (paxNames.length() > 0) paxNames.append(", ");
+            if (rs.getString(1) != null) paxNames.append(rs.getString(1));
+        }
+        rs.close(); pt.close();
+
+        // 3. Fetch deleter name
+        pt = con.prepareStatement("SELECT fullName FROM users WHERE id=? LIMIT 1");
+        pt.setInt(1, deletedBy);
+        rs = pt.executeQuery();
+        String delName = rs.next() ? (rs.getString(1) != null ? rs.getString(1) : "") : "";
+        rs.close(); pt.close();
+
+        // 4. Delete child rows first (FK order)
+        pt = con.prepareStatement("DELETE FROM ticket_passenger WHERE booking_id=?");
+        pt.setInt(1, bookingId); pt.executeUpdate(); pt.close();
+
+        pt = con.prepareStatement("DELETE FROM ticket_ledger WHERE booking_id=?");
+        pt.setInt(1, bookingId); pt.executeUpdate(); pt.close();
+
+        pt = con.prepareStatement("DELETE FROM ticket_booking WHERE id=?");
+        pt.setInt(1, bookingId); pt.executeUpdate(); pt.close();
+
+        // 5. Insert delete log
+        pt = con.prepareStatement(
+            "INSERT INTO ticket_delete_log" +
+            " (booking_id,ticket_no,pnr,booking_date,oneway_from,oneway_to,oneway_travel_date," +
+            "  passenger_names,buy_agent,buy_amount,sell_agent,sell_amount," +
+            "  customer_name,customer_amount,no_of_seats,deleted_by,deleted_by_name,deleted_at)" +
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())");
+        pt.setInt(1, bookingId);
+        pt.setString(2, tktNo);
+        pt.setString(3, pnrVal);
+        pt.setString(4, bookDate.isEmpty() ? null : bookDate);
+        pt.setString(5, owFrom);
+        pt.setString(6, owTo);
+        pt.setString(7, owDate.isEmpty() ? null : owDate);
+        pt.setString(8, paxNames.toString());
+        pt.setString(9, buyAgent.isEmpty() ? null : buyAgent);
+        pt.setDouble(10, buyAmt);
+        pt.setString(11, sellAgent.isEmpty() ? null : sellAgent);
+        pt.setDouble(12, sellAmt);
+        pt.setString(13, custName.isEmpty() ? null : custName);
+        pt.setDouble(14, custAmt);
+        pt.setInt(15, seats);
+        pt.setInt(16, deletedBy);
+        pt.setString(17, delName);
+        pt.executeUpdate(); pt.close();
+
+        con.commit();
+    } catch (Exception e) {
+        if (con != null) try { con.rollback(); } catch (Exception ex) {}
+        throw e;
+    } finally {
+        if (rs  != null) try { rs.close();  } catch (Exception e) {}
+        if (pt  != null) try { pt.close();  } catch (Exception e) {}
+        if (con != null) try { con.setAutoCommit(true); con.close(); } catch (Exception e) {}
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET TICKET DELETE LOG  –  list of deleted tickets by deleted_at date range
+// Row: [0]id [1]booking_id [2]ticket_no [3]pnr [4]booking_date
+//      [5]oneway_from [6]oneway_to [7]oneway_travel_date
+//      [8]passenger_names [9]buy_agent [10]buy_amount
+//      [11]sell_agent [12]sell_amount [13]customer_name [14]customer_amount
+//      [15]no_of_seats [16]deleted_by_name [17]deleted_at
+// ─────────────────────────────────────────────────────────────────────────────
+public Vector getTicketDeleteLog(String fromDate, String toDate) {
+    Vector result = new Vector();
+    Connection con = null; PreparedStatement pt = null; ResultSet rs = null;
+    try {
+        con = util.DBConnectionManager.getConnectionFromPool();
+        pt = con.prepareStatement(
+            "SELECT id,booking_id,ticket_no,pnr,booking_date," +
+            " oneway_from,oneway_to,oneway_travel_date," +
+            " passenger_names,buy_agent,buy_amount," +
+            " sell_agent,sell_amount,customer_name,customer_amount," +
+            " no_of_seats,deleted_by_name,deleted_at" +
+            " FROM ticket_delete_log" +
+            " WHERE DATE(deleted_at) BETWEEN ? AND ?" +
+            " ORDER BY id DESC");
+        pt.setString(1, fromDate);
+        pt.setString(2, toDate);
+        rs = pt.executeQuery();
+        while (rs.next()) {
+            Vector row = new Vector();
+            for (int i = 1; i <= rs.getMetaData().getColumnCount(); i++) row.add(rs.getObject(i));
+            result.add(row);
+        }
+    } catch (Exception e) { e.printStackTrace(); }
+    finally {
+        if (rs  != null) try { rs.close();  } catch (Exception e) { ; }
+        if (pt  != null) try { pt.close();  } catch (Exception e) { ; }
+        if (con != null) try { con.close(); } catch (Exception e) { ; }
+    }
+    return result;
+}
+
 }
