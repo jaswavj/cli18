@@ -29,7 +29,7 @@ try {
     }
     if (txnType == null || txnType.isEmpty()) txnType = "DR";
 
-    String result = billing.collectTicketBalance(bookingId, partyType, agentId, partyName, txnType, amount, payModeId, collectionDate, transactionNo);
+    String result = billing.collectTicketBalance(bookingId, partyType, agentId, partyName, txnType, amount, payModeId, collectionDate, transactionNo, userId);
     out.print(result);
 } catch (Exception e) {
     out.print("ERROR:" + e.getMessage());

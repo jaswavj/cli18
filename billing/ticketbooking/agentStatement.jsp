@@ -180,6 +180,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
     </div>
     <div style="text-align:right;color:rgba(255,255,255,.7);font-size:11px;">
         <div style="font-weight:700;color:#fff;">Agent Statement</div>
+        <div style="color:#c9922a;font-weight:700;font-size:13px;margin-top:2px;"><%=selectedAgentName%></div>
         <div><%=fromDisp%> &nbsp;to&nbsp; <%=toDisp%></div>
     </div>
 </div>

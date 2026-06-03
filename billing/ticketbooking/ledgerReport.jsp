@@ -366,6 +366,26 @@ function openCollect(bookingId, partyType, agentId, partyName, txnType, maxBal) 
     _cPartyName = partyName;
     _cTxnType   = txnType;
     _cMaxBal    = maxBal;
+
+    // Duplicate check: same booking + agent + amount already collected today?
+    fetch(ctx + '/ticketbooking/checkDuplicateLedger.jsp?bookingId=' + bookingId
+            + '&agentId=' + agentId + '&amount=' + maxBal.toFixed(2))
+    .then(r => r.json())
+    .then(d => {
+        if (d.duplicate) {
+            alert('⚠️ Duplicate Entry Detected!\n\nThis amount has already been collected today for this booking.\n\nEntered by : ' + d.enteredBy + '\nDate & Time: ' + d.dateTime + '\n\nClick OK to reload the page.');
+            location.reload();
+            return;
+        }
+        _showCollectModal(partyName, maxBal);
+    })
+    .catch(() => {
+        // On network error, proceed to modal
+        _showCollectModal(partyName, maxBal);
+    });
+}
+
+function _showCollectModal(partyName, maxBal) {
     document.getElementById('collectInfo').innerHTML =
         'Party: <span>' + partyName + '</span> &nbsp;|&nbsp; Balance Due: <span style="color:#dc2626;">&#8377;' + maxBal.toFixed(2) + '</span>';
     document.getElementById('collectAmount').value = maxBal.toFixed(2);

@@ -7294,7 +7294,7 @@ public Vector getTicketLedgerReport(String fromDate, String toDate, int agentId)
             " SUM(CASE WHEN l.transaction_type='CR' THEN COALESCE(l.bill_amount,0)-COALESCE(l.amount,0)" +
             "          WHEN l.transaction_type='DR' THEN -(COALESCE(l.bill_amount,0)-COALESCE(l.amount,0))" +
             "          ELSE 0 END) AS net_balance," +
-            " MIN(l.transaction_date) AS first_date," +
+            " b.booking_date AS first_date," +
             " l.agent_id, l.party_name," +
             " MAX(COALESCE(pm.modes,'')) AS payment_mode_name," +
             " MAX(COALESCE(l.transaction_no,'')) AS last_txn_no" +
@@ -7302,10 +7302,10 @@ public Vector getTicketLedgerReport(String fromDate, String toDate, int agentId)
             " JOIN ticket_booking b ON b.id = l.booking_id" +
             " LEFT JOIN ticket_agent a ON a.id = l.agent_id" +
             " LEFT JOIN ticket_payment_mode pm ON pm.id = l.payment_mode_id" +
-            " WHERE l.transaction_date BETWEEN ? AND ?" +
+            " WHERE b.booking_date BETWEEN ? AND ?" +
             (agentId > 0 ? " AND l.agent_id = ?" : "") +
-            " GROUP BY l.booking_id, l.party_type, l.agent_id, l.party_name, b.ticket_no, b.pnr, a.name" +
-            " ORDER BY MIN(l.transaction_date) DESC, l.booking_id DESC";
+            " GROUP BY l.booking_id, l.party_type, l.agent_id, l.party_name, b.ticket_no, b.pnr, a.name, b.booking_date" +
+            " ORDER BY b.booking_date DESC, l.booking_id DESC";
         pt = con.prepareStatement(sql);
         pt.setString(1, fromDate);
         pt.setString(2, toDate);
@@ -7434,15 +7434,15 @@ public Vector getAgentPaidReport(String fromDate, String toDate, int agentId) {
 // ─────────────────────────────────────────────────────────────────────────────
 public String collectTicketBalance(int bookingId, String partyType, Integer agentId,
         String partyName, String txnType, double collectedAmount,
-        Integer paymentModeId, String collectionDate, String transactionNo) {
+        Integer paymentModeId, String collectionDate, String transactionNo, Integer createdBy) {
     Connection con = null; PreparedStatement pt = null;
     try {
         con = util.DBConnectionManager.getConnectionFromPool();
         con.setAutoCommit(false);
         String sql =
             "INSERT INTO ticket_ledger " +
-            "(booking_id, party_type, agent_id, party_name, transaction_type, bill_amount, amount, payment_mode_id, transaction_no, remarks, transaction_date) " +
-            "VALUES (?,?,?,?,?,0,?,?,?,?,?)";
+            "(booking_id, party_type, agent_id, party_name, transaction_type, bill_amount, amount, payment_mode_id, transaction_no, remarks, transaction_date, created_by) " +
+            "VALUES (?,?,?,?,?,0,?,?,?,?,?,?)";
         pt = con.prepareStatement(sql);
         pt.setInt(1, bookingId);
         pt.setString(2, partyType);
@@ -7457,6 +7457,7 @@ public String collectTicketBalance(int bookingId, String partyType, Integer agen
         if (tnStr != null) pt.setString(8, tnStr); else pt.setNull(8, Types.VARCHAR);
         pt.setString(9, "Balance collection");
         pt.setString(10, collectionDate);
+        if (createdBy != null) pt.setInt(11, createdBy); else pt.setNull(11, Types.INTEGER);
         int rows = pt.executeUpdate();
         if (rows == 0) throw new Exception("No rows inserted");
         con.commit();
