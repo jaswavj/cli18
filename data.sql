@@ -300,7 +300,6 @@ insert  into `ticket_booking`(`id`,`pnr`,`ticket_no`,`booking_date`,`oneway_trav
 (12,'OEIZFN','TKT-012','2026-04-02','2026-04-11','21:40:00',3,4,'758','SCOOT (TR)',NULL,NULL,NULL,NULL,NULL,NULL,1,'9715825688',8,18000.00,18000.00,2,NULL,NULL,0.00,NULL,NULL,20800.00,20800.00,0,1,25,'2026-06-01 12:17:02',0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00),
 (13,'BB2S9H','TKT-013','2026-04-02','2026-05-06','03:30:00',4,3,'690','AIR INDIA EXPRESS (IX)',NULL,NULL,NULL,NULL,NULL,NULL,1,'9715825688',1,15896.00,15896.00,2,NULL,NULL,0.00,NULL,NULL,16800.00,16800.00,0,1,25,'2026-06-01 12:21:19',0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00),
 (14,'F4BWJP','TKT-014','2026-04-02','2026-04-12','16:35:00',4,3,'682','AIR INDIA EXPRESS (IX)',NULL,NULL,NULL,NULL,NULL,NULL,1,'9566840346',1,19781.00,19781.00,2,NULL,NULL,0.00,NULL,NULL,20900.00,20900.00,0,1,25,'2026-06-02 11:06:48',0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00),
-(15,'FZPDKL','TKT-015','2026-04-02','2026-04-07','03:30:00',4,3,'690','AIR INDIA EXPRESS (IX)',NULL,NULL,NULL,NULL,NULL,NULL,1,'+65 90364654',12,26000.00,26000.00,2,NULL,NULL,0.00,NULL,NULL,20000.00,27500.00,0,2,25,'2026-06-02 11:12:12',0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00),
 (16,'W6S13V','TKT-016','2026-04-02','2026-04-05','22:55:00',3,4,'766','SCOOT (TR)',NULL,NULL,NULL,NULL,NULL,NULL,1,'9488415876',8,16000.00,16000.00,2,NULL,NULL,0.00,NULL,NULL,10000.00,10000.00,0,1,25,'2026-06-02 11:43:32',0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00),
 (17,'XGZVGI','TKT-017','2026-05-26','2026-06-12','22:55:00',3,4,'766','SCOOT (TR)',NULL,NULL,NULL,NULL,NULL,NULL,1,NULL,8,38000.00,0.00,NULL,13,39500.00,0.00,NULL,NULL,NULL,0.00,0,NULL,25,'2026-06-02 12:21:21',0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00),
 (18,'WFK9RX','TKT-018','2026-06-02','2026-06-16','18:45:00',4,3,'6E 1007','IndiGo',NULL,NULL,NULL,NULL,NULL,NULL,1,NULL,1,28142.00,28142.00,2,13,29200.00,0.00,NULL,NULL,NULL,0.00,0,NULL,25,'2026-06-02 12:28:18',0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00),
@@ -366,6 +365,40 @@ insert  into `ticket_city`(`id`,`name`,`is_active`) values
 (14,'DAMMAM (DMM)',1),
 (15,'LONDON (LHR)',1),
 (16,'NORTH KOREA (FNJ)',1);
+
+/*Table structure for table `ticket_delete_log` */
+
+DROP TABLE IF EXISTS `ticket_delete_log`;
+
+CREATE TABLE `ticket_delete_log` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `booking_id` int NOT NULL,
+  `ticket_no` varchar(50) DEFAULT NULL,
+  `pnr` varchar(50) DEFAULT NULL,
+  `booking_date` date DEFAULT NULL,
+  `oneway_from` varchar(100) DEFAULT NULL,
+  `oneway_to` varchar(100) DEFAULT NULL,
+  `oneway_travel_date` date DEFAULT NULL,
+  `passenger_names` text,
+  `buy_agent` varchar(100) DEFAULT NULL,
+  `buy_amount` decimal(10,2) DEFAULT NULL,
+  `sell_agent` varchar(100) DEFAULT NULL,
+  `sell_amount` decimal(10,2) DEFAULT NULL,
+  `customer_name` varchar(100) DEFAULT NULL,
+  `customer_amount` decimal(10,2) DEFAULT NULL,
+  `no_of_seats` int DEFAULT NULL,
+  `deleted_by` int unsigned DEFAULT NULL,
+  `deleted_by_name` varchar(100) DEFAULT NULL,
+  `deleted_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_tdl_booking` (`booking_id`),
+  KEY `idx_tdl_deleted_at` (`deleted_at`)
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+/*Data for the table `ticket_delete_log` */
+
+insert  into `ticket_delete_log`(`id`,`booking_id`,`ticket_no`,`pnr`,`booking_date`,`oneway_from`,`oneway_to`,`oneway_travel_date`,`passenger_names`,`buy_agent`,`buy_amount`,`sell_agent`,`sell_amount`,`customer_name`,`customer_amount`,`no_of_seats`,`deleted_by`,`deleted_by_name`,`deleted_at`) values 
+(1,15,'TKT-015','FZPDKL','2026-04-02','TIRUCHIRAPPALLI (TRZ)','SINGAPORE (SIN)','2026-04-07','MR. KUMARESAN / MURUGAN','BHARATH AIR TRAVELS',26000.00,NULL,0.00,NULL,20000.00,1,1,'admin','2026-06-03 16:02:39');
 
 /*Table structure for table `ticket_flightno` */
 
@@ -458,12 +491,9 @@ insert  into `ticket_ledger`(`id`,`booking_id`,`party_type`,`party_name`,`agent_
 (28,13,'CUSTOMER','-',NULL,16800.00,'DR',16800.00,1,NULL,'Customer payment | PNR: BB2S9H','2026-04-02','2026-06-01 12:21:19','ORIGINAL',25,NULL),
 (29,14,'BUY_AGENT',NULL,1,19781.00,'CR',19781.00,2,'.','Buy ticket | PNR: F4BWJP','2026-04-02','2026-06-02 11:06:48','ORIGINAL',25,NULL),
 (30,14,'CUSTOMER','-',NULL,20900.00,'DR',20900.00,1,NULL,'Customer payment | PNR: F4BWJP','2026-04-02','2026-06-02 11:06:48','ORIGINAL',25,NULL),
-(31,15,'BUY_AGENT',NULL,12,26000.00,'CR',26000.00,2,'.','Buy ticket | PNR: FZPDKL','2026-04-02','2026-06-02 11:12:12','ORIGINAL',25,NULL),
-(32,15,'CUSTOMER','-',NULL,20000.00,'DR',27500.00,2,'.','Customer payment | PNR: FZPDKL','2026-04-02','2026-06-02 11:12:12','ORIGINAL',25,NULL),
 (34,3,'CUSTOMER','-',NULL,0.00,'DR',500.00,2,'.','Balance collection','2026-06-02','2026-06-02 11:19:31','ORIGINAL',25,NULL),
 (36,16,'BUY_AGENT',NULL,8,16000.00,'CR',16000.00,2,'.','Buy ticket | PNR: W6S13V','2026-04-02','2026-06-02 11:43:32','ORIGINAL',25,NULL),
 (37,16,'CUSTOMER','-',NULL,10000.00,'DR',10000.00,1,NULL,'Customer payment | PNR: W6S13V','2026-04-02','2026-06-02 11:43:32','ORIGINAL',25,NULL),
-(38,15,'CUSTOMER','-',NULL,0.00,'CR',7500.00,2,'.','Balance collection','2026-06-02','2026-06-02 11:44:43','ORIGINAL',25,NULL),
 (39,17,'BUY_AGENT',NULL,8,38000.00,'CR',0.00,NULL,NULL,'Buy ticket | PNR: XGZVGI','2026-05-26','2026-06-02 12:21:21','ORIGINAL',25,NULL),
 (40,17,'SELL_AGENT',NULL,13,39500.00,'DR',0.00,NULL,NULL,'Sell ticket | PNR: XGZVGI','2026-05-26','2026-06-02 12:21:21','ORIGINAL',25,NULL),
 (41,18,'BUY_AGENT',NULL,1,28142.00,'CR',28142.00,2,'I','Buy ticket | PNR: WFK9RX','2026-06-02','2026-06-02 12:28:18','ORIGINAL',25,NULL),
@@ -509,7 +539,6 @@ insert  into `ticket_passenger`(`id`,`booking_id`,`seat_no`,`passenger_name`) va
 (13,12,1,'Mr. BALRASU TAMILARASAN'),
 (14,13,1,'Mr. BALRASU TAMILARASAN'),
 (15,14,1,'MR. VEERAMMAL / RAMESH'),
-(17,15,1,'MR. KUMARESAN / MURUGAN'),
 (18,16,1,'MR. SAMINATHAN / CHINNAKKANNU'),
 (19,17,1,'Mr. DURAIRAJ  YOGANATHAN'),
 (20,18,1,'Mr.YOGANATHAN DURAIRAJ'),
