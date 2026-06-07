@@ -1,6 +1,7 @@
 <%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8"%>
 <%@ page import="java.util.*,java.text.SimpleDateFormat,java.text.DecimalFormat"%>
 <jsp:useBean id="billing" class="billing.billingBean" />
+<jsp:useBean id="userb" class="user.userBean" />
 <%
 Integer userId = (Integer) session.getAttribute("userId");
 if (userId == null) {
@@ -23,6 +24,14 @@ try { if (agentIdP != null && !agentIdP.isEmpty()) agentFilterId = Integer.parse
 Vector agents   = billing.getTicketAgents();
 Vector payModes = billing.getTicketPaymentModes();
 Vector allRows  = billing.getTicketLedgerReport(fromDate, toDate, agentFilterId);
+Vector companyDet = userb.getCompanyDetails();
+String companyName = (companyDet.size() > 1 && companyDet.get(1) != null) ? companyDet.get(1).toString() : "";
+String companyAddr = (companyDet.size() > 2 && companyDet.get(2) != null) ? companyDet.get(2).toString() : "";
+java.text.SimpleDateFormat dpFmt = new java.text.SimpleDateFormat("dd/MM/yyyy");
+java.text.SimpleDateFormat iFmt  = new java.text.SimpleDateFormat("yyyy-MM-dd");
+String fromDisp = fromDate, toDisp = toDate;
+try { fromDisp = dpFmt.format(iFmt.parse(fromDate)); } catch (Exception e) {}
+try { toDisp   = dpFmt.format(iFmt.parse(toDate));   } catch (Exception e) {}
 Vector rows = new Vector();
 for (int _fi = 0; _fi < allRows.size(); _fi++) {
     Vector _fr = (Vector) allRows.get(_fi);
@@ -95,8 +104,8 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
 .sum-chip.chip-bal  .sum-chip-val{color:var(--red);}
 
 /* Table */
-.tbl-wrap{background:var(--card);border-radius:var(--r);border:1px solid var(--border-l);box-shadow:var(--shadow-sm);overflow:hidden;}
-.rpt-table{width:100%;border-collapse:collapse;font-size:12.5px;}
+.tbl-wrap{background:var(--card);border-radius:var(--r);border:1px solid var(--border-l);box-shadow:var(--shadow-sm);overflow-x:auto;}
+.rpt-table{width:100%;min-width:900px;border-collapse:collapse;font-size:12.5px;}
 .rpt-table thead tr{background:linear-gradient(135deg,var(--navy) 0%,var(--navy2) 100%);}
 .rpt-table thead th{padding:10px 10px;color:#fff;font-weight:700;text-transform:uppercase;font-size:10.5px;letter-spacing:.4px;white-space:nowrap;text-align:left;}
 .rpt-table tbody tr{border-bottom:1px solid var(--border-l);transition:background .1s;}
@@ -118,6 +127,31 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
 .bal-cell.due{color:var(--red);}
 .btn-collect{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:var(--r-sm);font-size:11px;font-weight:700;cursor:pointer;background:#dc2626;color:#fff;border:none;transition:background .15s;}
 .btn-collect:hover{background:#b91c1c;}
+.bb-print{background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.35);}
+.bb-print:hover{background:rgba(255,255,255,.25);}
+.pax-list{font-size:10px;line-height:1.5;color:var(--text);}
+.pax-list .pax-item{white-space:normal;word-break:break-word;}
+.rpt-table .col-pax{width:200px;max-width:200px;min-width:120px;}
+.rpt-table .col-tkt{white-space:nowrap;min-width:90px;}
+.rpt-table .col-date{white-space:nowrap;min-width:90px;}
+.rpt-table .col-party{min-width:110px;}
+.rpt-table .col-amt{white-space:nowrap;min-width:80px;}
+.rpt-table .col-bal{white-space:nowrap;min-width:80px;}
+.print-header{display:none;}
+@media print{
+  .tw-nav,.rpt-hdr,.sum-row,.no-print{display:none!important;}
+  .tw,.tw-body{height:auto!important;overflow:visible!important;}
+  .tbl-wrap{box-shadow:none;border:none;overflow:visible!important;}
+  .rpt-table{min-width:unset!important;font-size:10px;}
+  .rpt-table thead tr{background:#1a2744!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  .rpt-table thead th{color:#fff!important;padding:5px 6px!important;}
+  body{background:#fff;font-size:11px;}
+  .tw-body{padding:4px 6px!important;overflow:visible!important;}
+  .rpt-table tbody td{padding:4px 6px!important;}
+  .print-header{display:flex!important;}
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}
+  @page{size:A4 landscape;margin:8mm 8mm;}
+}
 
 /* Modal */
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2000;align-items:center;justify-content:center;}
@@ -182,6 +216,21 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
     </form>
 
     <div class="hdr-spacer"></div>
+    <button class="bb bb-print no-print" onclick="window.print()">
+      <i class="fa-solid fa-print"></i> Print
+    </button>
+  </div>
+
+  <!-- PRINT HEADER (visible only when printing) -->
+  <div class="print-header" style="display:none;align-items:center;gap:14px;padding:10px 16px;background:linear-gradient(135deg,#1a2744 0%,#243159 100%);border-bottom:3px solid #c9922a;margin-bottom:8px;">
+    <div style="flex:1;">
+      <div style="color:#c9922a;font-size:18px;font-weight:900;letter-spacing:1px;text-transform:uppercase;"><%=companyName%></div>
+      <%if (!companyAddr.isEmpty()){%><div style="color:rgba(255,255,255,.75);font-size:12px;margin-top:2px;"><%=companyAddr%></div><%}%>
+    </div>
+    <div style="text-align:right;color:rgba(255,255,255,.7);font-size:11px;">
+      <div style="font-weight:700;color:#fff;font-size:13px;">Ticket Ledger Report</div>
+      <div style="margin-top:3px;"><%=fromDisp%> &nbsp;to&nbsp; <%=toDisp%></div>
+    </div>
   </div>
 
   <!-- BODY -->
@@ -213,24 +262,25 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
         <thead>
           <tr>
             <th>#</th>
-            <th>Date</th>
-            <th>Ticket / PNR</th>
-            <th>Party</th>
+            <th class="col-date">Date</th>
+            <th class="col-tkt">Ticket / PNR</th>
+            <th class="col-pax">Passengers</th>
+            <th class="col-party">Party</th>
             <th>Type</th>
             <th>DR/CR</th>
-            <th>Bill Amt</th>
-            <th>Paid Amt</th>
+            <th class="col-amt">Bill Amt</th>
+            <th class="col-amt">Paid Amt</th>
             <th>Mode</th>
             <th>Txn No</th>
-            <th>Balance</th>
-            <th>Action</th>
+            <th class="col-bal">Balance</th>
+            <th class="no-print">Action</th>
           </tr>
         </thead>
         <tbody>
         <%
         if (rows.isEmpty()) {
         %>
-          <tr><td colspan="12" style="text-align:center;padding:30px;color:var(--muted);">
+          <tr><td colspan="13" style="text-align:center;padding:30px;color:var(--muted);">
             <i class="fa-solid fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;"></i>
             No ledger entries found for this period.
           </td></tr>
@@ -251,9 +301,9 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
             double bal   = Math.abs(netBal);
             String fdate = r.get(8) != null ? r.get(8).toString() : "";
             String agentIdRaw    = r.get(9)  != null ? r.get(9).toString()  : "0";
-            String pName         = r.get(10) != null ? r.get(10).toString() : "";
             String payModeName   = r.get(11) != null ? r.get(11).toString() : "";
             String lastTxnNo     = r.get(12) != null ? r.get(12).toString() : "";
+            String pName         = r.get(13) != null ? r.get(13).toString() : "";
 
             String ptBadge = "badge-cust";
             String ptLabel = partyType;
@@ -272,6 +322,20 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
               <div style="font-size:11px;color:var(--muted);"><%=pnr%></div>
             </td>
             <td>
+              <div class="pax-list">
+              <%
+                String[] paxArr = pName.isEmpty() ? new String[0] : pName.split(",");
+                for (int pi = 0; pi < paxArr.length; pi++) {
+                  String pax = paxArr[pi].trim();
+                  if (!pax.isEmpty()) {
+              %><div class="pax-item"><i class="fa-solid fa-user" style="font-size:9px;color:var(--muted);margin-right:3px;"></i><%=pax%></div><%
+                  }
+                }
+                if (paxArr.length == 0) { %><span style="color:var(--muted);">—</span><% }
+              %>
+              </div>
+            </td>
+            <td>
               <span class="badge <%=ptBadge%>"><%=ptLabel%></span>
               <div style="font-size:12px;margin-top:3px;font-weight:600;"><%=partyDisp%></div>
             </td>
@@ -284,7 +348,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
               <%=lastTxnNo.isEmpty() ? "<span style='color:var(--muted);'>—</span>" : lastTxnNo%>
             </td>
             <td class="bal-cell <%=balCls%>">&#8377;<%=df.format(Math.abs(bal))%></td>
-            <td>
+            <td class="no-print">
               <%if (bal > 0.005) {%>
               <button class="btn-collect"
                 onclick="openCollect(<%=bookingId%>,'<%=partyType%>','<%=agentIdRaw%>','<%=partyDisp.replace("'","\\'")%>','<%=txnType%>',<%=df.format(bal)%>)">
@@ -302,7 +366,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
         </tbody>
         <tfoot>
           <tr>
-            <td colspan="6" style="color:var(--muted);">TOTALS</td>
+            <td colspan="7" style="color:var(--muted);">TOTALS</td>
             <td>&#8377;<%=df.format(totalBill)%></td>
             <td style="color:var(--green);">&#8377;<%=df.format(totalPaid)%></td>
             <td></td><td></td>
@@ -446,6 +510,15 @@ function saveCollect() {
 // Close modal on overlay click
 document.getElementById('collectModal').addEventListener('click', function(e) {
     if (e.target === this) closeCollect();
+});
+
+// Auto-collapse sidebar on page load (desktop only)
+document.addEventListener('DOMContentLoaded', function() {
+    if (window.innerWidth > 768) {
+        var sb = document.getElementById('sidebar');
+        if (sb) sb.classList.add('hidden');
+        document.body.classList.add('sidebar-hidden');
+    }
 });
 </script>
 </body>

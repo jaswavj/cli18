@@ -7297,14 +7297,16 @@ public Vector getTicketLedgerReport(String fromDate, String toDate, int agentId)
             " b.booking_date AS first_date," +
             " l.agent_id, l.party_name," +
             " MAX(COALESCE(pm.modes,'')) AS payment_mode_name," +
-            " MAX(COALESCE(l.transaction_no,'')) AS last_txn_no" +
+            " MAX(COALESCE(l.transaction_no,'')) AS last_txn_no," +
+            " MAX(COALESCE(pax.pax_names,'')) AS passenger_names" +
             " FROM ticket_ledger l" +
             " JOIN ticket_booking b ON b.id = l.booking_id" +
             " LEFT JOIN ticket_agent a ON a.id = l.agent_id" +
             " LEFT JOIN ticket_payment_mode pm ON pm.id = l.payment_mode_id" +
+            " LEFT JOIN (SELECT booking_id, GROUP_CONCAT(passenger_name ORDER BY seat_no SEPARATOR ', ') AS pax_names FROM ticket_passenger GROUP BY booking_id) pax ON pax.booking_id = l.booking_id" +
             " WHERE b.booking_date BETWEEN ? AND ?" +
             (agentId > 0 ? " AND l.agent_id = ?" : "") +
-            " GROUP BY l.booking_id, l.party_type, l.agent_id, l.party_name, b.ticket_no, b.pnr, a.name, b.booking_date" +
+            " GROUP BY l.booking_id, l.party_type, l.agent_id, l.party_name, b.ticket_no, b.pnr, a.name, b.booking_date, pax.pax_names" +
             " ORDER BY b.booking_date DESC, l.booking_id DESC";
         pt = con.prepareStatement(sql);
         pt.setString(1, fromDate);
