@@ -100,6 +100,7 @@ if (rows.size() > 0) {
 // Ticket-wise payment summary map
 // key -> bookingId|side (BUY/SELL), value -> map of totals and payment timeline
 java.util.LinkedHashMap ticketPayMap = new java.util.LinkedHashMap();
+java.util.HashMap bookingPaxMap = new java.util.HashMap();
 for (int i = 0; i < payRows.size(); i++) {
     Vector pr = (Vector) payRows.get(i);
     int bookingId = 0;
@@ -112,11 +113,36 @@ for (int i = 0; i < payRows.size(); i++) {
 
     java.util.Map info = (java.util.Map) ticketPayMap.get(mapKey);
     if (info == null) {
+        String passengerName = "-";
+        String bookingKey = String.valueOf(bookingId);
+        if (bookingPaxMap.containsKey(bookingKey)) {
+            passengerName = bookingPaxMap.get(bookingKey) != null ? bookingPaxMap.get(bookingKey).toString() : "-";
+        } else {
+            try {
+                Vector paxRows = billing.getPNRPassengers(bookingId);
+                if (paxRows != null && paxRows.size() > 0) {
+                    StringBuilder paxNamesBuilder = new StringBuilder();
+                    for (int px = 0; px < paxRows.size(); px++) {
+                        Vector paxRow = (Vector) paxRows.get(px);
+                        String pName = (paxRow != null && paxRow.size() > 1 && paxRow.get(1) != null) ? paxRow.get(1).toString().trim() : "";
+                        if (pName.isEmpty()) continue;
+                        if (paxNamesBuilder.length() > 0) paxNamesBuilder.append(", ");
+                        paxNamesBuilder.append(pName);
+                    }
+                    if (paxNamesBuilder.length() > 0) passengerName = paxNamesBuilder.toString();
+                }
+            } catch (Exception e) {
+                passengerName = "-";
+            }
+            bookingPaxMap.put(bookingKey, passengerName);
+        }
+
         info = new java.util.HashMap();
         info.put("bookingId", String.valueOf(bookingId));
         info.put("side", side);
         info.put("ticketNo", pr.get(2) != null ? pr.get(2).toString() : "-");
         info.put("pnr", pr.get(3) != null ? pr.get(3).toString() : "-");
+        info.put("passengerName", passengerName);
         String rFrom = pr.get(12) != null ? pr.get(12).toString() : "";
         String rTo   = pr.get(13) != null ? pr.get(13).toString() : "";
         info.put("route", (!rFrom.isEmpty() && !rTo.isEmpty()) ? (rFrom + "/" + rTo) : "-");
@@ -246,6 +272,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
 .tp-table th{background:#eef2ff;color:#1e293b;padding:7px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;border-bottom:1px solid #dbe5f2;white-space:nowrap;}
 .tp-table td{padding:7px 8px;font-size:11px;border-bottom:1px solid #edf2f7;vertical-align:top;}
 .tp-table th.num,.tp-table td.num{text-align:right;}
+.tp-col-passenger{font-size:10px;color:var(--muted);line-height:1.35;}
 .tp-mode-lines{font-size:10px;line-height:1.45;color:var(--muted);}
 .tp-bal-pos{color:var(--red);font-weight:700;}
 .tp-bal-zero{color:var(--green);font-weight:700;}
@@ -514,9 +541,8 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
                 <table class="tp-table">
                     <thead>
                         <tr>
-                            <th class="tp-col-type" style="width:70px;">Type</th>
-                            <th class="tp-col-ticket" style="width:95px;">Ticket</th>
                             <th class="tp-col-pnr" style="width:90px;">PNR</th>
+                            <th class="tp-col-passenger" style="width:150px;">Passenger Name</th>
                             <th class="num tp-col-bill" style="width:90px;">Bill</th>
                             <th class="num tp-col-paid" style="width:90px;">Paid</th>
                             <th class="num tp-col-balance" style="width:90px;">Balance</th>
@@ -532,13 +558,10 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
                            java.util.Map.Entry en = (java.util.Map.Entry) tIt.next();
                            java.util.Map info = (java.util.Map) en.getValue();
                            String side = info.get("side") != null ? info.get("side").toString() : "SELL";
-                           String ticketNo = info.get("ticketNo") != null ? info.get("ticketNo").toString() : "-";
                            String pnr = info.get("pnr") != null ? info.get("pnr").toString() : "-";
-                           String route = info.get("route") != null ? info.get("route").toString() : "-";
+                           String passengerName = info.get("passengerName") != null ? info.get("passengerName").toString() : "-";
                            double billV = ((Double) info.get("bill")).doubleValue();
                            double paidV = ((Double) info.get("paid")).doubleValue();
-                           double cashV = ((Double) info.get("cashPaid")).doubleValue();
-                           double bankV = ((Double) info.get("bankPaid")).doubleValue();
                            double diffV = billV - paidV;
                            double balV = diffV > 0 ? diffV : 0;
                               if ("BUY".equals(side)) runningFinalBal -= balV;
@@ -550,9 +573,8 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
                            String balCls = Math.abs(balV) < 0.005 ? "tp-bal-zero" : "tp-bal-pos";
                     %>
                         <tr>
-                            <td class="tp-col-type" style="font-weight:700;"><%=side%></td>
-                            <td class="tp-col-ticket" style="font-weight:700;"><%=ticketNo%></td>
                             <td class="tp-col-pnr"><%=pnr%></td>
+                            <td class="tp-col-passenger"><%=passengerName%></td>
                             <td class="num tp-col-bill"><%=String.format("%.2f", billV)%></td>
                             <td class="num tp-col-paid" style="color:var(--green);font-weight:700;"><%=String.format("%.2f", paidV)%></td>
                             <td class="num tp-col-balance <%=balCls%>"><%=String.format("%.2f", balV)%></td>
