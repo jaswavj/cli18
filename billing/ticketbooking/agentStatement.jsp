@@ -13,8 +13,10 @@ String today    = sdf.format(new java.util.Date());
 String fromDate = request.getParameter("fromDate");
 String toDate   = request.getParameter("toDate");
 String agentIdP = request.getParameter("agentId");
+String ticketWiseP = request.getParameter("ticketWise");
 if (fromDate == null || fromDate.isEmpty()) fromDate = today;
 if (toDate   == null || toDate.isEmpty())   toDate   = today;
+boolean showTicketWise = "1".equals(ticketWiseP);
 int agentId = 0;
 try { if (agentIdP != null && !agentIdP.isEmpty()) agentId = Integer.parseInt(agentIdP); } catch (Exception e) {}
 
@@ -35,8 +37,32 @@ try {
 // Data (only load when agent is selected)
 Vector rows = new Vector();
 String selectedAgentName = "";
+Vector payRows = new Vector();
 if (agentId > 0) {
     rows = billing.getAgentStatement(fromDate, toDate, agentId);
+    // Ticket-wise view should include both sides where this agent appears.
+    Vector payRowsBuy  = billing.getTicketPaymentsDetail(fromDate, toDate, agentId, "BUY");
+    Vector payRowsSell = billing.getTicketPaymentsDetail(fromDate, toDate, agentId, "SELL");
+    for (int i = 0; i < payRowsBuy.size(); i++)  payRows.add(payRowsBuy.get(i));
+    for (int i = 0; i < payRowsSell.size(); i++) payRows.add(payRowsSell.get(i));
+
+    // Keep ticket-wise list in first-entry order (oldest entry first).
+    java.util.Collections.sort(payRows, new java.util.Comparator() {
+        public int compare(Object o1, Object o2) {
+            Vector a = (Vector) o1;
+            Vector b = (Vector) o2;
+            String d1 = a.get(11) != null ? a.get(11).toString() : "";
+            String d2 = b.get(11) != null ? b.get(11).toString() : "";
+            int c = d1.compareTo(d2);
+            if (c != 0) return c;
+
+            int id1 = 0, id2 = 0;
+            try { id1 = a.get(0) != null ? Integer.parseInt(a.get(0).toString()) : 0; } catch (Exception e) { id1 = 0; }
+            try { id2 = b.get(0) != null ? Integer.parseInt(b.get(0).toString()) : 0; } catch (Exception e) { id2 = 0; }
+            return id1 - id2;
+        }
+    });
+
     // Get agent name from OPEN row
     if (rows.size() > 0) {
         Vector firstRow = (Vector) rows.get(0);
@@ -68,6 +94,67 @@ if (rows.size() > 0) {
         totalCrStr  = lastRow.get(4).toString();
         closingBal  = lastRow.get(5).toString();
         closingDir  = lastRow.get(6).toString();
+    }
+}
+
+// Ticket-wise payment summary map
+// key -> bookingId|side (BUY/SELL), value -> map of totals and payment timeline
+java.util.LinkedHashMap ticketPayMap = new java.util.LinkedHashMap();
+for (int i = 0; i < payRows.size(); i++) {
+    Vector pr = (Vector) payRows.get(i);
+    int bookingId = 0;
+    try { bookingId = pr.get(1) != null ? Integer.parseInt(pr.get(1).toString()) : 0; } catch (Exception e) { bookingId = 0; }
+    if (bookingId <= 0) continue;
+
+    String partyType = pr.get(4) != null ? pr.get(4).toString() : "";
+    String side = "BUY_AGENT".equals(partyType) ? "BUY" : "SELL";
+    String mapKey = String.valueOf(bookingId) + "|" + side;
+
+    java.util.Map info = (java.util.Map) ticketPayMap.get(mapKey);
+    if (info == null) {
+        info = new java.util.HashMap();
+        info.put("bookingId", String.valueOf(bookingId));
+        info.put("side", side);
+        info.put("ticketNo", pr.get(2) != null ? pr.get(2).toString() : "-");
+        info.put("pnr", pr.get(3) != null ? pr.get(3).toString() : "-");
+        String rFrom = pr.get(12) != null ? pr.get(12).toString() : "";
+        String rTo   = pr.get(13) != null ? pr.get(13).toString() : "";
+        info.put("route", (!rFrom.isEmpty() && !rTo.isEmpty()) ? (rFrom + "/" + rTo) : "-");
+        info.put("bill", new Double(0));
+        info.put("paid", new Double(0));
+        info.put("cashPaid", new Double(0));
+        info.put("bankPaid", new Double(0));
+        info.put("lastPayDate", "");
+        info.put("entries", new java.util.ArrayList());
+        ticketPayMap.put(mapKey, info);
+    }
+
+    double billAmt = 0, payAmt = 0;
+    try { billAmt = pr.get(7) != null ? Double.parseDouble(pr.get(7).toString()) : 0; } catch (Exception e) { billAmt = 0; }
+    try { payAmt  = pr.get(8) != null ? Double.parseDouble(pr.get(8).toString()) : 0; } catch (Exception e) { payAmt = 0; }
+    String mode = pr.get(9) != null ? pr.get(9).toString() : "";
+    String payDate = pr.get(11) != null ? pr.get(11).toString() : "";
+
+    double oldBill = ((Double) info.get("bill")).doubleValue();
+    double oldPaid = ((Double) info.get("paid")).doubleValue();
+    double oldCash = ((Double) info.get("cashPaid")).doubleValue();
+    double oldBank = ((Double) info.get("bankPaid")).doubleValue();
+
+    info.put("bill", new Double(oldBill + billAmt));
+    info.put("paid", new Double(oldPaid + payAmt));
+
+    if (payAmt > 0.0001) {
+        String modeLc = mode.toLowerCase();
+        if (modeLc.contains("cash")) info.put("cashPaid", new Double(oldCash + payAmt));
+        else                          info.put("bankPaid", new Double(oldBank + payAmt));
+
+        if (!payDate.isEmpty()) {
+            String prevDate = info.get("lastPayDate") != null ? info.get("lastPayDate").toString() : "";
+            if (prevDate.isEmpty() || payDate.compareTo(prevDate) > 0) info.put("lastPayDate", payDate);
+        }
+
+        java.util.List entries = (java.util.List) info.get("entries");
+        entries.add((payDate.isEmpty() ? "-" : payDate) + " | " + (mode.isEmpty() ? "-" : mode) + " | " + String.format("%.2f", payAmt));
     }
 }
 %>
@@ -103,6 +190,9 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
 .btn-search:hover{background:var(--violet-d);}
 .btn-print{height:34px;padding:0 16px;border:none;border-radius:var(--r-sm);background:var(--navy);color:#fff;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;}
 .btn-print:hover{background:var(--navy2);}
+.chk-wrap{display:flex;align-items:center;gap:8px;height:34px;padding:0 10px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--inp-bg);}
+.chk-wrap input[type="checkbox"]{width:15px;height:15px;accent-color:var(--violet);}
+.chk-wrap label{margin:0;font-size:12px;font-weight:600;color:var(--text);cursor:pointer;user-select:none;}
 
 /* Statement container */
 .stmt-wrap{background:var(--card);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden;}
@@ -148,6 +238,21 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
 .s-chip.chip-cr .s-val{color:var(--green);}
 .s-chip.chip-bal .s-val{color:var(--violet);}
 
+/* Ticket-wise payment summary */
+.ticket-pay-wrap{margin-top:12px;border-top:1px solid var(--border);padding:12px 12px 0;}
+.ticket-pay-title{font-size:13px;font-weight:700;color:var(--navy);margin-bottom:8px;display:flex;align-items:center;gap:6px;}
+.ticket-pay-note{font-size:11px;color:var(--muted);margin-bottom:8px;}
+.tp-table{width:100%;border-collapse:collapse;}
+.tp-table th{background:#eef2ff;color:#1e293b;padding:7px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;border-bottom:1px solid #dbe5f2;white-space:nowrap;}
+.tp-table td{padding:7px 8px;font-size:11px;border-bottom:1px solid #edf2f7;vertical-align:top;}
+.tp-table th.num,.tp-table td.num{text-align:right;}
+.tp-mode-lines{font-size:10px;line-height:1.45;color:var(--muted);}
+.tp-bal-pos{color:var(--red);font-weight:700;}
+.tp-bal-zero{color:var(--green);font-weight:700;}
+.tp-fbal-pos{color:var(--red);font-weight:700;}
+.tp-fbal-neg{color:var(--green);font-weight:700;}
+.tp-fbal-zero{color:var(--muted);font-weight:700;}
+
 /* Empty */
 .empty-state{padding:60px 20px;text-align:center;color:var(--muted);}
 .empty-state i{font-size:40px;opacity:.3;margin-bottom:10px;}
@@ -164,6 +269,16 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
     .stmt-table tr.row-total td{background:#1a2744!important;color:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
     .stmt-table td{padding:4px 8px;font-size:10pt;}
     .stmt-table tr:hover td{background:transparent;}
+
+    /* Ticket-wise print compatibility */
+    .ticket-pay-wrap{padding:0!important;margin-top:8px!important;border-top:none!important;}
+    .ticket-pay-note{font-size:9pt!important;margin-bottom:6px!important;}
+    .tp-table{width:100%!important;table-layout:fixed;font-size:8.5pt!important;}
+    .tp-table th,.tp-table td{padding:3px 4px!important;white-space:normal!important;word-break:break-word;}
+
+    /* Keep print compact: hide secondary columns */
+    .tp-col-pnr,.tp-col-route,.tp-col-cash,.tp-col-bank,.tp-col-last,.tp-col-entries{display:none!important;}
+
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     @page{size:A4 portrait;margin:10mm 8mm;}
 }
@@ -212,6 +327,13 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
             <% } %>
         </select>
     </div>
+    <div>
+        <label>&nbsp;</label>
+        <div class="chk-wrap">
+            <input type="checkbox" id="ticketWise" name="ticketWise" value="1" <%=showTicketWise?"checked":""%>>
+            <label for="ticketWise">Show Ticket-wise List</label>
+        </div>
+    </div>
     <button type="submit" class="btn-search"><i class="fa-solid fa-magnifying-glass" style="margin-right:5px;"></i>View Statement</button>
     <% if (agentId > 0 && rows.size() > 1) { %>
     <button type="button" class="btn-print" onclick="window.print()"><i class="fa-solid fa-print"></i>Print</button>
@@ -235,6 +357,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
     <!-- Header -->
     
 
+    <% if (!showTicketWise) { %>
     <% // Count TXN rows only (excluding OPEN and TOTAL)
        int txnCount = 0;
        for (int i = 0; i < rows.size(); i++) {
@@ -381,6 +504,85 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
     </table>
     </div>
     <% } // end txnCount > 0 %>
+    <% } // end !showTicketWise %>
+
+        <% if (showTicketWise && ticketPayMap.size() > 0) { %>
+        <div class="ticket-pay-wrap">
+            <div class="ticket-pay-title"><i class="fa-solid fa-money-check-dollar" style="color:var(--gold);"></i>Ticket-wise Payment & Balance</div>
+            <div class="ticket-pay-note">Shows each ticket bill, paid amount, balance, running final balance, and payment date history for selected period.</div>
+            <div style="overflow-x:auto;">
+                <table class="tp-table">
+                    <thead>
+                        <tr>
+                            <th class="tp-col-type" style="width:70px;">Type</th>
+                            <th class="tp-col-ticket" style="width:95px;">Ticket</th>
+                            <th class="tp-col-pnr" style="width:90px;">PNR</th>
+                            <th class="num tp-col-bill" style="width:90px;">Bill</th>
+                            <th class="num tp-col-paid" style="width:90px;">Paid</th>
+                            <th class="num tp-col-balance" style="width:90px;">Balance</th>
+                            <th class="num tp-col-final" style="width:110px;">Final Balance</th>
+                            <th class="tp-col-last" style="width:105px;">Last Paid On</th>
+                            <th class="tp-col-entries">Payment Entries (Date | Mode | Amount)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    <% double runningFinalBal = 0;
+                       java.util.Iterator tIt = ticketPayMap.entrySet().iterator();
+                       while (tIt.hasNext()) {
+                           java.util.Map.Entry en = (java.util.Map.Entry) tIt.next();
+                           java.util.Map info = (java.util.Map) en.getValue();
+                           String side = info.get("side") != null ? info.get("side").toString() : "SELL";
+                           String ticketNo = info.get("ticketNo") != null ? info.get("ticketNo").toString() : "-";
+                           String pnr = info.get("pnr") != null ? info.get("pnr").toString() : "-";
+                           String route = info.get("route") != null ? info.get("route").toString() : "-";
+                           double billV = ((Double) info.get("bill")).doubleValue();
+                           double paidV = ((Double) info.get("paid")).doubleValue();
+                           double cashV = ((Double) info.get("cashPaid")).doubleValue();
+                           double bankV = ((Double) info.get("bankPaid")).doubleValue();
+                           double diffV = billV - paidV;
+                           double balV = diffV > 0 ? diffV : 0;
+                              if ("BUY".equals(side)) runningFinalBal -= balV;
+                              else                    runningFinalBal += balV;
+
+                              String fBalCls = Math.abs(runningFinalBal) < 0.005 ? "tp-fbal-zero" : (runningFinalBal > 0 ? "tp-fbal-pos" : "tp-fbal-neg");
+                           String lastPay = info.get("lastPayDate") != null ? info.get("lastPayDate").toString() : "";
+                           java.util.List entries = (java.util.List) info.get("entries");
+                           String balCls = Math.abs(balV) < 0.005 ? "tp-bal-zero" : "tp-bal-pos";
+                    %>
+                        <tr>
+                            <td class="tp-col-type" style="font-weight:700;"><%=side%></td>
+                            <td class="tp-col-ticket" style="font-weight:700;"><%=ticketNo%></td>
+                            <td class="tp-col-pnr"><%=pnr%></td>
+                            <td class="num tp-col-bill"><%=String.format("%.2f", billV)%></td>
+                            <td class="num tp-col-paid" style="color:var(--green);font-weight:700;"><%=String.format("%.2f", paidV)%></td>
+                            <td class="num tp-col-balance <%=balCls%>"><%=String.format("%.2f", balV)%></td>
+                            <td class="num tp-col-final <%=fBalCls%>"><%=String.format("%.2f", Math.abs(runningFinalBal))%></td>
+                            <td class="tp-col-last" style="white-space:nowrap;"><%=lastPay.isEmpty() ? "-" : lastPay%></td>
+                            <td class="tp-col-entries">
+                                <% if (entries == null || entries.size() == 0) { %>
+                                    <span class="tp-mode-lines">-</span>
+                                <% } else { %>
+                                    <div class="tp-mode-lines">
+                                    <% for (int ei = 0; ei < entries.size(); ei++) { %>
+                                        <div><%=entries.get(ei)%></div>
+                                    <% } %>
+                                    </div>
+                                <% } %>
+                            </td>
+                        </tr>
+                    <% } %>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <% } %>
+
+        <% if (showTicketWise && ticketPayMap.size() == 0) { %>
+        <div class="ticket-pay-wrap">
+            <div class="ticket-pay-title"><i class="fa-solid fa-money-check-dollar" style="color:var(--gold);"></i>Ticket-wise Payment & Balance</div>
+            <div class="ticket-pay-note">No ticket-wise payment entries found for the selected filters.</div>
+        </div>
+        <% } %>
 </div>
 <% } // end agentId > 0 %>
 

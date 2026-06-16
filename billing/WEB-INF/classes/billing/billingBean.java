@@ -8248,25 +8248,190 @@ public Vector getServiceBillItems(int billId) {
 // getServiceBillReport — returns bill list for date range.
 // Each row: [0]id [1]bill_no [2]bill_date(dd-MM-yyyy) [3]customer_name
 //           [4]phone [5]total_amount [6]paid_amount [7]balance [8]pay_mode_name
+//           [9]collected_amount
 // ---------------------------------------------------------------------------
 public Vector getServiceBillReport(String fromDate, String toDate) {
+    return getServiceBillReport(fromDate, toDate, 0);
+}
+
+// ---------------------------------------------------------------------------
+// getServiceBillReport (with filter)
+// balanceOnly = 1  -> only rows where balance > 0
+// balanceOnly = 0  -> all rows
+// ---------------------------------------------------------------------------
+public Vector getServiceBillReport(String fromDate, String toDate, int balanceOnly) {
+    Vector result = new Vector();
+    Connection con = null; PreparedStatement pt = null; ResultSet rs = null;
+    try {
+        con = util.DBConnectionManager.getConnectionFromPool();
+        String balFilter = balanceOnly == 1 ? " AND sb.balance > 0" : "";
+        try {
+            // Preferred query: includes collected amount from collection table.
+            pt = con.prepareStatement(
+                "SELECT sb.id, sb.bill_no, DATE_FORMAT(sb.bill_date,'%d-%m-%Y'), " +
+                "COALESCE(sb.customer_name,''), COALESCE(sb.phone,''), " +
+                "sb.total_amount, sb.paid_amount, sb.balance, COALESCE(sb.pay_mode_name,''), " +
+                "COALESCE((SELECT SUM(c.amount) FROM service_bill_balance_collection c WHERE c.bill_id = sb.id),0) AS collected_amount " +
+                "FROM service_bill sb " +
+                "WHERE sb.bill_date BETWEEN ? AND ? " + balFilter +
+                " ORDER BY sb.bill_date DESC, sb.id DESC");
+            pt.setString(1, fromDate);
+            pt.setString(2, toDate);
+            rs = pt.executeQuery();
+        } catch (Exception exTbl) {
+            // Fallback: collection table not available yet. Keep report working.
+            if (rs != null) try { rs.close(); } catch (Exception ex) { ; }
+            if (pt != null) try { pt.close(); } catch (Exception ex) { ; }
+
+            pt = con.prepareStatement(
+                "SELECT sb.id, sb.bill_no, DATE_FORMAT(sb.bill_date,'%d-%m-%Y'), " +
+                "COALESCE(sb.customer_name,''), COALESCE(sb.phone,''), " +
+                "sb.total_amount, sb.paid_amount, sb.balance, COALESCE(sb.pay_mode_name,''), " +
+                "0 AS collected_amount " +
+                "FROM service_bill sb " +
+                "WHERE sb.bill_date BETWEEN ? AND ? " + balFilter +
+                " ORDER BY sb.bill_date DESC, sb.id DESC");
+            pt.setString(1, fromDate);
+            pt.setString(2, toDate);
+            rs = pt.executeQuery();
+        }
+
+        while (rs.next()) {
+            Vector row = new Vector();
+            for (int i = 1; i <= rs.getMetaData().getColumnCount(); i++) row.add(rs.getObject(i));
+            result.add(row);
+        }
+    } catch (Exception e) { e.printStackTrace(); }
+    finally {
+        if (rs  != null) try { rs.close();  } catch (Exception e) { ; }
+        if (pt  != null) try { pt.close();  } catch (Exception e) { ; }
+        if (con != null) try { con.close(); } catch (Exception e) { ; }
+    }
+    return result;
+}
+
+// ---------------------------------------------------------------------------
+// collectServiceBillBalance — inserts collection entry and updates header
+// Returns "OK" or error text.
+// ---------------------------------------------------------------------------
+public String collectServiceBillBalance(int billId, double collectAmount,
+        Integer payModeId, String payModeName, String remarks,
+        String collectionDate, int userId) {
+    Connection con = null; PreparedStatement pt = null; ResultSet rs = null;
+    try {
+        if (billId <= 0) return "Invalid bill id";
+        if (collectAmount <= 0.0001) return "Collection amount must be greater than 0";
+
+        con = util.DBConnectionManager.getConnectionFromPool();
+        con.setAutoCommit(false);
+
+        double total = 0, paid = 0, bal = 0;
+        pt = con.prepareStatement(
+            "SELECT total_amount, paid_amount, balance FROM service_bill WHERE id=? FOR UPDATE");
+        pt.setInt(1, billId);
+        rs = pt.executeQuery();
+        if (!rs.next()) {
+            rs.close(); pt.close();
+            con.rollback();
+            return "Bill not found";
+        }
+        total = rs.getDouble(1);
+        paid = rs.getDouble(2);
+        bal = rs.getDouble(3);
+        rs.close(); pt.close();
+
+        if (bal <= 0.0001) {
+            con.rollback();
+            return "No pending balance";
+        }
+        if (collectAmount - bal > 0.0001) {
+            con.rollback();
+            return "Collection amount cannot exceed balance";
+        }
+
+        double newPaid = paid + collectAmount;
+        double newBal = total - newPaid;
+        if (newBal < 0.0001) newBal = 0;
+
+        pt = con.prepareStatement(
+            "INSERT INTO service_bill_balance_collection " +
+            "(bill_id, collection_date, amount, pay_mode_id, pay_mode_name, remarks, created_by) " +
+            "VALUES (?,?,?,?,?,?,?)");
+        pt.setInt(1, billId);
+        pt.setString(2, (collectionDate != null && !collectionDate.trim().isEmpty()) ? collectionDate : new java.text.SimpleDateFormat("yyyy-MM-dd").format(new java.util.Date()));
+        pt.setDouble(3, collectAmount);
+        if (payModeId != null && payModeId > 0) pt.setInt(4, payModeId.intValue());
+        else pt.setNull(4, Types.INTEGER);
+        pt.setString(5, payModeName != null ? payModeName.trim() : "");
+        pt.setString(6, remarks != null ? remarks.trim() : "");
+        pt.setInt(7, userId);
+        pt.executeUpdate();
+        pt.close();
+
+        pt = con.prepareStatement(
+            "UPDATE service_bill SET paid_amount=?, balance=?, pay_mode_id=?, pay_mode_name=? WHERE id=?");
+        pt.setDouble(1, newPaid);
+        pt.setDouble(2, newBal);
+        if (payModeId != null && payModeId > 0) pt.setInt(3, payModeId.intValue());
+        else pt.setNull(3, Types.INTEGER);
+        pt.setString(4, payModeName != null ? payModeName.trim() : "");
+        pt.setInt(5, billId);
+        pt.executeUpdate();
+        pt.close();
+
+        con.commit();
+        return "OK";
+    } catch (Exception e) {
+        if (con != null) try { con.rollback(); } catch (Exception ex) { ; }
+        e.printStackTrace();
+        return "Failed to collect balance";
+    } finally {
+        if (rs  != null) try { rs.close();  } catch (Exception e) { ; }
+        if (pt  != null) try { pt.close();  } catch (Exception e) { ; }
+        if (con != null) try { con.setAutoCommit(true); con.close(); } catch (Exception e) { ; }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// getServiceBillCollectedAmount — total collected from collection table
+// ---------------------------------------------------------------------------
+public double getServiceBillCollectedAmount(int billId) {
+    Connection con = null; PreparedStatement pt = null; ResultSet rs = null;
+    try {
+        con = util.DBConnectionManager.getConnectionFromPool();
+        pt = con.prepareStatement(
+            "SELECT COALESCE(SUM(amount),0) FROM service_bill_balance_collection WHERE bill_id=?");
+        pt.setInt(1, billId);
+        rs = pt.executeQuery();
+        if (rs.next()) return rs.getDouble(1);
+    } catch (Exception e) { e.printStackTrace(); }
+    finally {
+        if (rs  != null) try { rs.close();  } catch (Exception e) { ; }
+        if (pt  != null) try { pt.close();  } catch (Exception e) { ; }
+        if (con != null) try { con.close(); } catch (Exception e) { ; }
+    }
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+// getServiceBillBalanceCollections — row: [0]date [1]amount [2]mode [3]remarks
+// ---------------------------------------------------------------------------
+public Vector getServiceBillBalanceCollections(int billId) {
     Vector result = new Vector();
     Connection con = null; PreparedStatement pt = null; ResultSet rs = null;
     try {
         con = util.DBConnectionManager.getConnectionFromPool();
         pt = con.prepareStatement(
-            "SELECT id, bill_no, DATE_FORMAT(bill_date,'%d-%m-%Y'), " +
-            "COALESCE(customer_name,''), COALESCE(phone,''), " +
-            "total_amount, paid_amount, balance, COALESCE(pay_mode_name,'') " +
-            "FROM service_bill " +
-            "WHERE bill_date BETWEEN ? AND ? " +
-            "ORDER BY bill_date DESC, id DESC");
-        pt.setString(1, fromDate);
-        pt.setString(2, toDate);
+            "SELECT DATE_FORMAT(collection_date,'%d-%m-%Y'), amount, COALESCE(pay_mode_name,''), COALESCE(remarks,'') " +
+            "FROM service_bill_balance_collection WHERE bill_id=? ORDER BY collection_date ASC, id ASC");
+        pt.setInt(1, billId);
         rs = pt.executeQuery();
         while (rs.next()) {
             Vector row = new Vector();
-            for (int i = 1; i <= rs.getMetaData().getColumnCount(); i++) row.add(rs.getObject(i));
+            row.add(rs.getString(1));
+            row.add(rs.getDouble(2));
+            row.add(rs.getString(3));
+            row.add(rs.getString(4));
             result.add(row);
         }
     } catch (Exception e) { e.printStackTrace(); }

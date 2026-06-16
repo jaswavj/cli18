@@ -26,6 +26,7 @@ String loadErr = bill.isEmpty() ? "Bill not found." : null;
 String billNo = "", billDate = "", customerName = "", phone = "";
 String payModeName = "", description = "";
 double subtotal = 0, discount = 0, totalAmount = 0, paidAmount = 0, balance = 0;
+double collectedAmount = 0;
 
 if (!bill.isEmpty()) {
     billNo       = bill.get(0)  != null ? bill.get(0).toString()  : "";
@@ -43,6 +44,8 @@ if (!bill.isEmpty()) {
 
 // Load items from bean
 Vector itemsVec = billing.getServiceBillItems(billId);
+Vector collections = billing.getServiceBillBalanceCollections(billId);
+collectedAmount = billing.getServiceBillCollectedAmount(billId);
 %>
 <!DOCTYPE html>
 <html lang="en">
@@ -111,6 +114,11 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#eef1f7;display:flex;fle
 .footer-band{text-align:center;margin-top:auto;padding-top:5mm;border-top:1pt solid #c9922a;margin-top:6mm;}
 .footer-band .thank{color:#1a2744;font-size:9pt;font-weight:900;}
 .footer-band .note{color:#64748b;font-size:7pt;margin-top:1mm;}
+.collection-box{background:#f8fafc;border:1pt solid #d1d9e6;border-radius:4pt;padding:2.5mm 3.5mm;margin-top:4mm;font-size:8pt;color:#0f172a;}
+.collection-box .c-lbl{font-size:7.5pt;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.4pt;margin-bottom:1.5mm;}
+.collection-box table{width:100%;border-collapse:collapse;font-size:7.5pt;}
+.collection-box th,.collection-box td{padding:1.5mm 1.5mm;border-bottom:.5pt solid #e8edf5;text-align:left;}
+.collection-box th{font-size:7pt;color:#64748b;text-transform:uppercase;}
 
 @media print{
     body{background:#fff;padding:0;}
@@ -178,6 +186,7 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#eef1f7;display:flex;fle
     <%if(discount>0){%><div class="tot-row"><span class="tl">Discount</span><span class="tv" style="color:#c9922a;">- &#8377;<%=String.format("%.2f",discount)%></span></div><%}%>
     <div class="tot-row grand"><span class="tl">Total Payable</span><span class="tv">&#8377;<%=String.format("%.2f",totalAmount)%></span></div>
     <div class="tot-row paid"><span class="tl">Paid</span><span class="tv">&#8377;<%=String.format("%.2f",paidAmount)%></span></div>
+    <div class="tot-row paid"><span class="tl">Balance Collected</span><span class="tv">&#8377;<%=String.format("%.2f",collectedAmount)%></span></div>
     <div class="tot-row balance"><span class="tl">Balance</span><span class="tv">&#8377;<%=String.format("%.2f",balance)%></span></div>
   </div>
   <%if(payModeName!=null&&!payModeName.isEmpty()){%>
@@ -190,6 +199,33 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#eef1f7;display:flex;fle
     <div><%=description%></div>
   </div>
   <%}%>
+
+  <% if (collections != null && collections.size() > 0) { %>
+  <div class="collection-box">
+    <div class="c-lbl">Balance Collection History</div>
+    <table>
+      <thead>
+        <tr><th style="width:24mm;">Date</th><th style="width:24mm;text-align:right;">Amount</th><th style="width:32mm;">Mode</th><th>Remarks</th></tr>
+      </thead>
+      <tbody>
+        <% for (int ci = 0; ci < collections.size(); ci++) {
+            Vector c = (Vector) collections.get(ci);
+            String cDate = c.get(0) != null ? c.get(0).toString() : "";
+            double cAmt = c.get(1) != null ? Double.parseDouble(c.get(1).toString()) : 0;
+            String cMode = c.get(2) != null ? c.get(2).toString() : "";
+            String cRem = c.get(3) != null ? c.get(3).toString() : "";
+        %>
+        <tr>
+          <td><%=cDate%></td>
+          <td style="text-align:right;font-weight:700;">&#8377;<%=String.format("%.2f",cAmt)%></td>
+          <td><%=cMode%></td>
+          <td><%=cRem%></td>
+        </tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+  <% } %>
 
   <div class="footer-band">
     <div class="thank">Thank you for your business!</div>

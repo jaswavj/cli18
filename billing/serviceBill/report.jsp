@@ -17,20 +17,24 @@ String fromDate = request.getParameter("fromDate");
 String toDate   = request.getParameter("toDate");
 if (fromDate == null || fromDate.isEmpty()) fromDate = defFrom;
 if (toDate   == null || toDate.isEmpty())   toDate   = defTo;
+String balanceOnlyP = request.getParameter("balanceOnly");
+int balanceOnly = "1".equals(balanceOnlyP) ? 1 : 0;
 
 String fromDisp = "", toDisp = "";
 try { fromDisp = ddf.format(sdf.parse(fromDate)); } catch(Exception e) { fromDisp = fromDate; }
 try { toDisp   = ddf.format(sdf.parse(toDate));   } catch(Exception e) { toDisp   = toDate;   }
 
 // Load via bean
-Vector rows = billing.getServiceBillReport(fromDate, toDate);
+Vector payModes = billing.getTicketPaymentModes();
+Vector rows = billing.getServiceBillReport(fromDate, toDate, balanceOnly);
 int totalCount = rows.size();
-double grandTotal = 0, grandPaid = 0, grandBalance = 0;
+double grandTotal = 0, grandPaid = 0, grandBalance = 0, grandCollected = 0;
 for (int i = 0; i < rows.size(); i++) {
     Vector r = (Vector) rows.get(i);
     try { grandTotal   += Double.parseDouble(r.get(5).toString()); } catch(Exception e) {}
     try { grandPaid    += Double.parseDouble(r.get(6).toString()); } catch(Exception e) {}
     try { grandBalance += Double.parseDouble(r.get(7).toString()); } catch(Exception e) {}
+  try { grandCollected += Double.parseDouble(r.get(9).toString()); } catch(Exception e) {}
 }
 %>
 <!DOCTYPE html>
@@ -40,6 +44,7 @@ for (int i = 0; i < rows.size(); i++) {
 <title>Service Bill Report</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <%@ include file="/assets/common/head.jsp" %>
+<script src="<%=ctx%>/dist/js/sweetalert2.all.min.js"></script>
 <style>
 :root{
     --navy:#1a2744;--navy2:#243159;--violet:#5c4d8a;--violet-d:#4a3d78;
@@ -71,6 +76,8 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
 .bb-ghost:hover{background:var(--border-l);}
 .bb-navy{background:var(--navy);color:#fff;}
 .bb-navy:hover{background:var(--navy2);}
+.bb-green{background:#166534;color:#fff;}
+.bb-green:hover{background:#14532d;}
 /* Chips */
 .chips{display:flex;gap:10px;flex-wrap:wrap;padding:10px 0 2px 0;}
 .chip{background:var(--card);border:1px solid var(--border-l);border-radius:6px;padding:7px 14px;display:flex;flex-direction:column;gap:2px;min-width:120px;box-shadow:var(--shadow);}
@@ -94,6 +101,12 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
 .bal-zero{color:var(--green);font-weight:700;}
 .bal-pos{color:var(--red);font-weight:700;}
 .no-data{text-align:center;padding:30px;color:var(--muted);}
+.modal-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.modal-grid .full{grid-column:1/-1;}
+.sw-field{display:flex;flex-direction:column;gap:4px;text-align:left;}
+.sw-field label{font-size:11px;font-weight:700;color:#64748b;}
+.sw-field input,.sw-field select,.sw-field textarea{height:34px;border:1.5px solid #d1d9e6;border-radius:6px;padding:0 10px;font-size:12px;outline:none;background:#f8fafc;}
+.sw-field textarea{height:70px;padding:8px 10px;resize:vertical;}
 @media print{
     .tw-nav,.rpt-hdr .rpt-hdr-right,.filter-bar{display:none!important;}
     .tw,.tw-body{overflow:visible;height:auto;}
@@ -128,6 +141,13 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
       <label>To Date</label>
       <input type="date" name="toDate" value="<%=toDate%>">
     </div>
+    <div class="fg">
+      <label>Filter</label>
+      <select name="balanceOnly">
+        <option value="0" <%=balanceOnly==0?"selected":""%>>All Bills</option>
+        <option value="1" <%=balanceOnly==1?"selected":""%>>Balance Bills Only</option>
+      </select>
+    </div>
     <button type="submit" class="bb bb-violet"><i class="fa-solid fa-magnifying-glass"></i> Search</button>
   </div>
   </form>
@@ -139,6 +159,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
       <div class="chip"><div class="chip-lbl">Total Bills</div><div class="chip-val gold"><%=totalCount%></div></div>
       <div class="chip"><div class="chip-lbl">Total Amount</div><div class="chip-val">&#8377;<%=String.format("%.2f",grandTotal)%></div></div>
       <div class="chip"><div class="chip-lbl">Total Paid</div><div class="chip-val green">&#8377;<%=String.format("%.2f",grandPaid)%></div></div>
+      <div class="chip"><div class="chip-lbl">Balance Collected</div><div class="chip-val green">&#8377;<%=String.format("%.2f",grandCollected)%></div></div>
       <div class="chip"><div class="chip-lbl">Total Balance</div><div class="chip-val red">&#8377;<%=String.format("%.2f",grandBalance)%></div></div>
       <div class="chip" style="flex:1;background:transparent;border-color:transparent;box-shadow:none;justify-content:flex-end;flex-direction:row;align-items:center;">
         <span style="font-size:11px;color:var(--muted);font-weight:700;">Period: <strong style="color:var(--text);"><%=fromDisp%></strong> to <strong style="color:var(--text);"><%=toDisp%></strong></span>
@@ -156,13 +177,14 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
           <th>Phone</th>
           <th style="text-align:right;">Total (&#8377;)</th>
           <th style="text-align:right;">Paid (&#8377;)</th>
+          <th style="text-align:right;">Collected (&#8377;)</th>
           <th style="text-align:right;">Balance (&#8377;)</th>
           <th>Pay Mode</th>
           <th style="text-align:center;">Action</th>
         </tr></thead>
         <tbody>
         <%if(rows.isEmpty()){%>
-        <tr><td colspan="10" class="no-data"><i class="fa-solid fa-inbox"></i>&nbsp; No records found for the selected period.</td></tr>
+        <tr><td colspan="11" class="no-data"><i class="fa-solid fa-inbox"></i>&nbsp; No records found for the selected period.</td></tr>
         <%} else {%>
         <%int sn=0; for(int ri=0;ri<rows.size();ri++){ sn++;
             Vector row=(Vector)rows.get(ri);
@@ -175,6 +197,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
             double rpaid   = row.get(6) != null ? Double.parseDouble(row.get(6).toString()) : 0;
             double rbal    = row.get(7) != null ? Double.parseDouble(row.get(7).toString()) : 0;
             String rpmode  = row.get(8) != null ? row.get(8).toString() : "";
+            double rcollected = row.get(9) != null ? Double.parseDouble(row.get(9).toString()) : 0;
         %>
         <tr>
           <td><span class="sn-badge"><%=sn%></span></td>
@@ -184,9 +207,16 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
           <td><%=rphone%></td>
           <td style="text-align:right;font-weight:700;"><%=String.format("%.2f",rtot)%></td>
           <td style="text-align:right;color:var(--green);font-weight:700;"><%=String.format("%.2f",rpaid)%></td>
+          <td style="text-align:right;color:#166534;font-weight:700;"><%=String.format("%.2f",rcollected)%></td>
           <td style="text-align:right;" class="<%=rbal>0?"bal-pos":"bal-zero"%>"><%=String.format("%.2f",rbal)%></td>
           <td><%=rpmode%></td>
           <td style="text-align:center;">
+            <% if (rbal > 0.0001) { %>
+            <button type="button" class="bb bb-green" style="height:26px;padding:0 8px;font-size:10px;margin-right:4px;"
+              onclick="openCollectModal('<%=rid%>','<%=rbillNo.replace("'","\\'")%>','<%=rcust.replace("'","\\'")%>','<%=String.format("%.2f",rbal)%>')" title="Collect Balance">
+              <i class="fa-solid fa-hand-holding-dollar"></i>
+            </button>
+            <% } %>
             <a href="<%=ctx%>/serviceBill/print.jsp?id=<%=rid%>" target="_blank" class="bb bb-navy" style="height:26px;padding:0 10px;font-size:10px;" title="View/Print">
               <i class="fa-solid fa-print"></i>
             </a>
@@ -199,6 +229,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
           <td colspan="5" style="text-align:right;font-size:10px;letter-spacing:.4px;">TOTAL</td>
           <td style="text-align:right;"><%=String.format("%.2f",grandTotal)%></td>
           <td style="text-align:right;color:#a7f3d0;"><%=String.format("%.2f",grandPaid)%></td>
+          <td style="text-align:right;color:#86efac;"><%=String.format("%.2f",grandCollected)%></td>
           <td style="text-align:right;color:#fca5a5;"><%=String.format("%.2f",grandBalance)%></td>
           <td colspan="2"></td>
         </tr></tfoot>
@@ -207,5 +238,70 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
     </div>
   </div>
 </div>
+
+<script>
+function openCollectModal(id, billNo, customer, bal) {
+  var modeOpts = '<option value="">-- Select Mode --</option>';
+  <% for (int i = 0; i < payModes.size(); i++) { Vector pm = (Vector) payModes.get(i); %>
+    modeOpts += '<option value="<%=pm.get(0)%>" data-name="<%=pm.get(1).toString().replace("\"","&quot;")%>"><%=pm.get(1).toString().replace("\"","&quot;")%></option>';
+  <% } %>
+
+  var today = '<%=new java.text.SimpleDateFormat("yyyy-MM-dd").format(new java.util.Date())%>';
+  var html = ''
+    + '<div class="modal-grid">'
+    + '  <div class="sw-field full"><label>Bill</label><input type="text" id="cbBillInfo" readonly value="#' + billNo + ' - ' + (customer || '-') + '"></div>'
+    + '  <div class="sw-field"><label>Pending Balance</label><input type="text" id="cbBal" readonly value="' + bal + '"></div>'
+    + '  <div class="sw-field"><label>Collection Date</label><input type="date" id="cbDate" value="' + today + '"></div>'
+    + '  <div class="sw-field"><label>Collect Amount</label><input type="number" step="0.01" id="cbAmt" value="' + bal + '"></div>'
+    + '  <div class="sw-field"><label>Payment Mode</label><select id="cbMode">' + modeOpts + '</select></div>'
+    + '  <div class="sw-field full"><label>Remarks</label><textarea id="cbRemarks" placeholder="Optional notes..."></textarea></div>'
+    + '</div>';
+
+  Swal.fire({
+    title: 'Collect Balance',
+    html: html,
+    width: 620,
+    confirmButtonText: 'Save Collection',
+    confirmButtonColor: '#1a2744',
+    showCancelButton: true,
+    cancelButtonText: 'Cancel',
+    preConfirm: function() {
+      var amt = parseFloat(document.getElementById('cbAmt').value || '0');
+      var max = parseFloat(bal || '0');
+      var modeSel = document.getElementById('cbMode');
+      var modeId = modeSel.value;
+      var modeName = modeSel.options[modeSel.selectedIndex] ? (modeSel.options[modeSel.selectedIndex].getAttribute('data-name') || '') : '';
+      var date = document.getElementById('cbDate').value;
+      var remarks = document.getElementById('cbRemarks').value || '';
+
+      if (!date) { Swal.showValidationMessage('Select collection date'); return false; }
+      if (isNaN(amt) || amt <= 0) { Swal.showValidationMessage('Enter valid collect amount'); return false; }
+      if (amt - max > 0.0001) { Swal.showValidationMessage('Collect amount cannot exceed balance'); return false; }
+      if (!modeId) { Swal.showValidationMessage('Select payment mode'); return false; }
+
+      var p = new URLSearchParams();
+      p.set('billId', id);
+      p.set('amount', amt.toFixed(2));
+      p.set('payModeId', modeId);
+      p.set('payModeName', modeName);
+      p.set('collectionDate', date);
+      p.set('remarks', remarks);
+
+      return fetch('<%=ctx%>/serviceBill/collectBalance.jsp', { method: 'POST', body: p })
+        .then(function(r){ return r.json(); })
+        .then(function(res){
+          if (res.status !== 'ok') throw new Error(res.msg || 'Collection failed');
+          return res;
+        })
+        .catch(function(err){ Swal.showValidationMessage(err.message || 'Collection failed'); return false; });
+    }
+  }).then(function(result){
+    if (result.isConfirmed) {
+      Swal.fire({icon:'success',title:'Balance Collected',confirmButtonColor:'#1a2744'})
+        .then(function(){ window.location.reload(); });
+    }
+  });
+}
+</script>
 </body>
 </html>
