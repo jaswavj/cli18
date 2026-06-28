@@ -118,6 +118,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
 .rpt-table thead th{padding:10px 10px;color:#fff;font-weight:700;text-transform:uppercase;font-size:10.5px;letter-spacing:.4px;white-space:nowrap;text-align:left;}
 .rpt-table tbody tr{border-bottom:1px solid var(--border-l);transition:background .1s;}
 .rpt-table tbody tr:hover{background:#f7f8fc;}
+.rpt-table tbody tr.row-click{cursor:pointer;}
 .rpt-table tbody td{padding:9px 10px;vertical-align:middle;}
 .rpt-table tbody tr:last-child{border-bottom:none;}
 .rpt-table tfoot tr{background:#f1f5f9;border-top:2px solid var(--border);}
@@ -149,9 +150,16 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
 .mfg label{font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;}
 .mfg input,.mfg select{height:34px;border:1.5px solid var(--border);border-radius:var(--r-sm);padding:0 10px;font-size:13px;outline:none;width:100%;}
 .mfg input:focus,.mfg select:focus{border-color:var(--violet);}
+.mfg textarea{border:1.5px solid var(--border);border-radius:var(--r-sm);padding:8px 10px;font-size:13px;outline:none;width:100%;min-height:76px;resize:vertical;font-family:inherit;}
+.mfg textarea:focus{border-color:var(--violet);}
 .modal-foot{padding:12px 16px;display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border-l);}
 .info-row{background:#fafafa;border-radius:var(--r-sm);padding:8px 12px;font-size:12px;color:var(--text);}
 .info-row span{font-weight:700;}
+.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.detail-box{background:#f8fafc;border:1px solid var(--border-l);border-radius:var(--r-sm);padding:8px 10px;}
+.detail-label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;}
+.detail-val{font-size:12px;font-weight:600;color:var(--text);margin-top:2px;word-break:break-word;}
+.note-box{background:#fffaf0;border:1px solid #f4e2bf;border-radius:var(--r-sm);padding:10px;font-size:12px;white-space:pre-wrap;min-height:46px;}
 
 @media print {
     .tw-nav,.rpt-hdr{display:none!important;}
@@ -301,6 +309,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
             String owTo       = r.get(13) != null ? r.get(13).toString() : "";
             String agentIdRaw = r.get(14) != null ? r.get(14).toString() : "0";
             String pName      = r.get(15) != null ? r.get(15).toString() : "";
+            String remarks    = r.size() > 17 && r.get(17) != null ? r.get(17).toString() : "";
 
             String key = bookingId + "|" + partyType;
             double[] vals = (double[]) balMap.get(key);
@@ -311,8 +320,28 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
             String ptLabel = "SELL_AGENT".equals(partyType) ? "Sell Agent" : "Customer";
             String balCls  = bal <= 0.005 ? "zero" : "due";
             String safeName = partyDisp.replace("'", "\\'");
+            String partyDispAttr = partyDisp.replace("&", "&amp;").replace("\"", "&quot;");
+            String routeText = (owFrom.isEmpty() && owTo.isEmpty()) ? "-" : (owFrom + " -> " + owTo);
+            String routeAttr = routeText.replace("&", "&amp;").replace("\"", "&quot;");
+            String payModeAttr = (payMode == null ? "" : payMode).replace("&", "&amp;").replace("\"", "&quot;");
+            String txnNoAttr = (txnNo == null ? "" : txnNo).replace("&", "&amp;").replace("\"", "&quot;");
+            String remarksAttr = (remarks == null ? "" : remarks).replace("&", "&amp;").replace("\"", "&quot;");
         %>
-          <tr>
+          <tr class="row-click"
+              data-ledger-id="<%=r.get(0)%>"
+              data-date="<%=fdate%>"
+              data-ticket-no="<%=tktNo%>"
+              data-pnr="<%=pnr%>"
+              data-party-type="<%=ptLabel%>"
+              data-party-name="<%=partyDispAttr%>"
+              data-route="<%=routeAttr%>"
+              data-mode="<%=payModeAttr%>"
+              data-txn-no="<%=txnNoAttr%>"
+              data-txn-type="<%=txnType%>"
+              data-bill="<%=df.format(bill)%>"
+              data-paid="<%=df.format(paid)%>"
+              data-remarks="<%=remarksAttr%>"
+              onclick="openRowDetailsFromRow(this)">
             <td style="color:var(--muted);"><%=sno++%></td>
             <td style="white-space:nowrap;color:var(--muted);font-size:11px;"><%=fdate%></td>
             <td>
@@ -469,6 +498,10 @@ if (!cancelRowsSell.isEmpty()) {
         <label>Transaction No <span style="color:#dc2626;">*</span></label>
         <input type="text" id="collectTxnNo" placeholder="Txn / Ref No for online payment">
       </div>
+      <div class="mfg">
+        <label>Notes <span style="color:#dc2626;">*</span></label>
+        <textarea id="collectNotes" placeholder="Enter collection notes"></textarea>
+      </div>
     </div>
     <div class="modal-foot">
       <button class="bb" style="background:#f1f5f9;color:var(--text);border-color:var(--border);" onclick="closeCollect()">Cancel</button>
@@ -477,9 +510,63 @@ if (!cancelRowsSell.isEmpty()) {
   </div>
 </div>
 
+<div class="modal-overlay" id="detailModal">
+  <div class="modal-box" style="width:620px;max-width:96vw;">
+    <div class="modal-head">
+      <div class="modal-head-title"><i class="fa-solid fa-receipt"></i> Collection Entry Details</div>
+      <button class="modal-close" onclick="closeDetailModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="detail-grid">
+        <div class="detail-box"><div class="detail-label">Date</div><div class="detail-val" id="dDate">-</div></div>
+        <div class="detail-box"><div class="detail-label">Ledger ID</div><div class="detail-val" id="dLedgerId">-</div></div>
+        <div class="detail-box"><div class="detail-label">Ticket / PNR</div><div class="detail-val" id="dTicket">-</div></div>
+        <div class="detail-box"><div class="detail-label">Route</div><div class="detail-val" id="dRoute">-</div></div>
+        <div class="detail-box"><div class="detail-label">Party</div><div class="detail-val" id="dParty">-</div></div>
+        <div class="detail-box"><div class="detail-label">Party Type</div><div class="detail-val" id="dPartyType">-</div></div>
+        <div class="detail-box"><div class="detail-label">Transaction Type</div><div class="detail-val" id="dTxnType">-</div></div>
+        <div class="detail-box"><div class="detail-label">Payment Mode</div><div class="detail-val" id="dMode">-</div></div>
+        <div class="detail-box"><div class="detail-label">Transaction No</div><div class="detail-val" id="dTxnNo">-</div></div>
+        <div class="detail-box"><div class="detail-label">Bill Amount</div><div class="detail-val" id="dBill">-</div></div>
+        <div class="detail-box"><div class="detail-label">Paid Amount</div><div class="detail-val" id="dPaid">-</div></div>
+      </div>
+      <div class="mfg" style="margin-top:4px;">
+        <label>Notes</label>
+        <div class="note-box" id="dRemarks">-</div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="bb" style="background:#f1f5f9;color:var(--text);border-color:var(--border);" onclick="closeDetailModal()">Close</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const ctx = '<%=ctx%>';
 let _cBookingId='', _cPartyType='', _cAgentId='', _cPartyName='', _cTxnType='', _cMaxBal=0;
+
+function openRowDetailsFromRow(tr) {
+    if (!tr) return;
+    const g = (k) => tr.getAttribute(k) || '';
+    document.getElementById('dDate').textContent = g('data-date') || '-';
+    document.getElementById('dLedgerId').textContent = g('data-ledger-id') || '-';
+    document.getElementById('dTicket').textContent = (g('data-ticket-no') || '-') + ' / ' + (g('data-pnr') || '-');
+    document.getElementById('dRoute').textContent = g('data-route') || '-';
+    document.getElementById('dParty').textContent = g('data-party-name') || '-';
+    document.getElementById('dPartyType').textContent = g('data-party-type') || '-';
+    document.getElementById('dTxnType').textContent = g('data-txn-type') || '-';
+    document.getElementById('dMode').textContent = g('data-mode') || '-';
+    document.getElementById('dTxnNo').textContent = g('data-txn-no') || '-';
+    document.getElementById('dBill').innerHTML = '&#8377;' + (g('data-bill') || '0.00');
+    document.getElementById('dPaid').innerHTML = '&#8377;' + (g('data-paid') || '0.00');
+    const notes = g('data-remarks').trim();
+    document.getElementById('dRemarks').textContent = notes ? notes : 'No notes';
+    document.getElementById('detailModal').classList.add('active');
+}
+
+function closeDetailModal() {
+    document.getElementById('detailModal').classList.remove('active');
+}
 
 function openCollect(bookingId, partyType, agentId, partyName, txnType, maxBal) {
     _cBookingId = bookingId; _cPartyType = partyType; _cAgentId = agentId;
@@ -490,6 +577,7 @@ function openCollect(bookingId, partyType, agentId, partyName, txnType, maxBal) 
     document.getElementById('collectMode').value = '';
     document.getElementById('collectTxnRow').style.display = 'none';
     document.getElementById('collectTxnNo').value = '';
+    document.getElementById('collectNotes').value = '';
     document.getElementById('collectModal').classList.add('active');
 }
 function closeCollect() {
@@ -507,9 +595,11 @@ function saveCollect() {
     const mode = document.getElementById('collectMode').value;
     const date = document.getElementById('collectDate').value;
     const txnNo = document.getElementById('collectTxnNo').value.trim();
+  const notes = document.getElementById('collectNotes').value.trim();
     if (!amt || amt <= 0) { alert('Enter a valid amount'); return; }
     if (!mode) { alert('Select a payment mode'); return; }
     if (!date) { alert('Select a collection date'); return; }
+  if (!notes) { alert('Enter notes'); return; }
     const opt = document.getElementById('collectMode').options[document.getElementById('collectMode').selectedIndex];
     if (opt.getAttribute('data-cash') === '0' && !txnNo) { alert('Enter Transaction No for online payment'); return; }
     const params = new URLSearchParams();
@@ -518,6 +608,7 @@ function saveCollect() {
     params.set('txnType', _cTxnType); params.set('amount', amt);
     params.set('payModeId', mode); params.set('collectionDate', date);
     params.set('txnNo', txnNo);
+    params.set('notes', notes);
     fetch(ctx + '/ticketbooking/collectBalance.jsp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -532,6 +623,9 @@ function saveCollect() {
 }
 document.getElementById('collectModal').addEventListener('click', function(e) {
     if (e.target === this) closeCollect();
+});
+document.getElementById('detailModal').addEventListener('click', function(e) {
+  if (e.target === this) closeDetailModal();
 });
 </script>
 </body>

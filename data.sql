@@ -165,8 +165,8 @@ CREATE TABLE `service_bill_balance_collection` (
   `collection_date` date NOT NULL,
   `amount` decimal(10,2) NOT NULL DEFAULT '0.00',
   `pay_mode_id` int DEFAULT NULL,
-  `pay_mode_name` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT '',
-  `remarks` text COLLATE utf8mb4_unicode_ci,
+  `pay_mode_name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT '',
+  `remarks` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
   `created_by` int NOT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -237,7 +237,7 @@ CREATE TABLE `ticket_airline` (
   `value` varchar(100) NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_airline_value` (`value`)
-) ENGINE=InnoDB AUTO_INCREMENT=44 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=46 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 /*Data for the table `ticket_airline` */
 
@@ -308,7 +308,7 @@ CREATE TABLE `ticket_booking` (
   `cancel_charge_sell` decimal(10,2) NOT NULL DEFAULT '0.00' COMMENT 'Cancel fee charged to customer / sell agent',
   `refund_to_sell` decimal(10,2) NOT NULL DEFAULT '0.00' COMMENT 'Amount returned to customer / sell agent',
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=25 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=27 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 /*Data for the table `ticket_booking` */
 
@@ -335,7 +335,9 @@ insert  into `ticket_booking`(`id`,`pnr`,`ticket_no`,`booking_date`,`oneway_trav
 (21,'D9MNHW','TKT-021','2026-05-26','2026-06-14',NULL,3,4,NULL,'IndiGo','2026-06-19',NULL,4,3,NULL,'IndiGo',1,NULL,1,63642.00,63642.00,2,13,65530.00,0.00,NULL,NULL,NULL,0.00,0,NULL,25,'2026-06-02 13:26:40',0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00),
 (22,'MHDF2R','TKT-022','2026-05-03','2026-05-09',NULL,3,4,NULL,'SCOOT (TR)',NULL,NULL,NULL,NULL,NULL,NULL,1,NULL,8,28000.00,0.00,NULL,13,30000.00,0.00,NULL,NULL,NULL,0.00,0,NULL,25,'2026-06-02 13:37:26',0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00),
 (23,'JASXBILL','TKT-023','2026-06-16','2026-06-16','14:07:00',6,5,'6E 1007','Air Arabia',NULL,NULL,NULL,NULL,NULL,NULL,1,'9999999999',8,10000.00,100.00,1,7,15000.00,100.00,2,NULL,NULL,0.00,0,NULL,1,'2026-06-16 14:05:52',0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00),
-(24,'jasx','TKT-024','2026-06-16','2026-06-17','14:14:00',6,14,'1','Air Arabia',NULL,NULL,NULL,NULL,NULL,NULL,1,'1212121212',7,15000.00,0.00,NULL,NULL,NULL,0.00,NULL,'sss',15000.00,15000.00,0,1,1,'2026-06-16 14:13:22',0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00);
+(24,'jasx','TKT-024','2026-06-16','2026-06-17','14:14:00',6,14,'1','Air Arabia',NULL,NULL,NULL,NULL,NULL,NULL,1,'1212121212',7,15000.00,0.00,NULL,NULL,NULL,0.00,NULL,'sss',15000.00,15000.00,0,1,1,'2026-06-16 14:13:22',0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00),
+(25,'fffff','TKT-025','2026-06-28','2026-06-02','20:03:00',16,1,'12','AIR INDIA EXPRESS (IX)',NULL,NULL,NULL,NULL,NULL,NULL,1,'3323232',13,30000.00,0.00,NULL,NULL,NULL,0.00,NULL,'sds',35000.00,35000.00,0,1,1,'2026-06-28 20:02:40',0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00),
+(26,'r4r4r','TKT-026','2026-06-28','2026-06-26','20:05:00',10,12,'32','Blue Dart Aviation',NULL,NULL,NULL,NULL,NULL,NULL,1,'323232',13,13000.00,0.00,NULL,NULL,NULL,0.00,NULL,'fd',15000.00,15000.00,0,2,1,'2026-06-28 20:03:28',0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00);
 
 /*Table structure for table `ticket_booking_log` */
 
@@ -438,15 +440,17 @@ CREATE TABLE `ticket_flightno` (
   `value` varchar(50) NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_flightno_value` (`value`)
-) ENGINE=InnoDB AUTO_INCREMENT=27 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=29 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 /*Data for the table `ticket_flightno` */
 
 insert  into `ticket_flightno`(`id`,`value`) values 
 (26,'1'),
+(27,'12'),
 (4,'132'),
 (9,'134'),
 (11,'252'),
+(28,'32'),
 (8,'321'),
 (5,'529'),
 (7,'609'),
@@ -486,7 +490,7 @@ CREATE TABLE `ticket_ledger` (
   KEY `idx_ticket_ledger_booking` (`booking_id`),
   KEY `fk_tl_created_by` (`created_by`),
   CONSTRAINT `fk_tl_created_by` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
-) ENGINE=InnoDB AUTO_INCREMENT=59 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=67 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 /*Data for the table `ticket_ledger` */
 
@@ -542,7 +546,15 @@ insert  into `ticket_ledger`(`id`,`booking_id`,`party_type`,`party_name`,`agent_
 (55,23,'SELL_AGENT',NULL,7,15000.00,'DR',100.00,2,'122','Sell ticket | PNR: JASXBILL','2026-06-16','2026-06-16 14:05:52','ORIGINAL',NULL,NULL),
 (56,23,'SELL_AGENT',NULL,7,0.00,'DR',4000.00,1,NULL,'Balance collection','2026-06-16','2026-06-16 14:10:08','ORIGINAL',1,NULL),
 (57,24,'BUY_AGENT',NULL,7,15000.00,'CR',0.00,NULL,NULL,'Buy ticket | PNR: jasx','2026-06-16','2026-06-16 14:13:22','ORIGINAL',NULL,NULL),
-(58,24,'CUSTOMER','sss',NULL,15000.00,'DR',15000.00,1,NULL,'Customer payment | PNR: jasx','2026-06-16','2026-06-16 14:13:22','ORIGINAL',NULL,NULL);
+(58,24,'CUSTOMER','sss',NULL,15000.00,'DR',15000.00,1,NULL,'Customer payment | PNR: jasx','2026-06-16','2026-06-16 14:13:22','ORIGINAL',NULL,NULL),
+(59,25,'BUY_AGENT',NULL,13,30000.00,'CR',0.00,NULL,NULL,'Buy ticket | PNR: fffff','2026-06-28','2026-06-28 20:02:40','ORIGINAL',NULL,NULL),
+(60,25,'CUSTOMER','sds',NULL,35000.00,'DR',35000.00,1,NULL,'Customer payment | PNR: fffff','2026-06-28','2026-06-28 20:02:40','ORIGINAL',NULL,NULL),
+(61,26,'BUY_AGENT',NULL,13,13000.00,'CR',0.00,NULL,NULL,'Buy ticket | PNR: r4r4r','2026-06-28','2026-06-28 20:03:28','ORIGINAL',NULL,NULL),
+(62,26,'CUSTOMER','fd',NULL,15000.00,'DR',15000.00,2,'77','Customer payment | PNR: r4r4r','2026-06-28','2026-06-28 20:03:28','ORIGINAL',NULL,NULL),
+(63,18,'SELL_AGENT',NULL,13,0.00,'DR',29200.00,2,'ggf','gffgfgfgfg','2026-06-28','2026-06-28 20:13:26','ORIGINAL',1,NULL),
+(64,21,'SELL_AGENT',NULL,13,0.00,'DR',65530.00,2,'ggf','gffgfgfgfg','2026-06-28','2026-06-28 20:13:26','ORIGINAL',1,NULL),
+(65,26,'BUY_AGENT',NULL,13,0.00,'CR',13000.00,1,NULL,'hggh','2026-06-28','2026-06-28 20:20:04','ORIGINAL',1,NULL),
+(66,25,'BUY_AGENT',NULL,13,0.00,'CR',30000.00,1,NULL,'hggh','2026-06-28','2026-06-28 20:20:04','ORIGINAL',1,NULL);
 
 /*Table structure for table `ticket_passenger` */
 
@@ -555,7 +567,7 @@ CREATE TABLE `ticket_passenger` (
   `passenger_name` varchar(255) DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `idx_ticket_passenger_booking` (`booking_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=27 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=29 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 /*Data for the table `ticket_passenger` */
 
@@ -582,7 +594,9 @@ insert  into `ticket_passenger`(`id`,`booking_id`,`seat_no`,`passenger_name`) va
 (23,21,1,'Mr. RAMESH RAMACHANDRAN'),
 (24,22,1,'MR . SABARINATHAN SHANMUGAVADIVEL'),
 (25,23,1,'JAS'),
-(26,24,1,'ssss');
+(26,24,1,'ssss'),
+(27,25,1,'sdsds'),
+(28,26,1,'sdsds');
 
 /*Table structure for table `ticket_payment_mode` */
 

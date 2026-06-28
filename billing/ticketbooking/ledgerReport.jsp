@@ -20,6 +20,7 @@ if (toDate    == null || toDate.isEmpty())    toDate    = today;
 if (txnFilter == null || txnFilter.isEmpty()) txnFilter = "";
 int agentFilterId = 0;
 try { if (agentIdP != null && !agentIdP.isEmpty()) agentFilterId = Integer.parseInt(agentIdP); } catch (Exception e) {}
+boolean allowMultiSelect = ("CR".equals(txnFilter) || "DR".equals(txnFilter)) && agentFilterId > 0;
 
 Vector agents   = billing.getTicketAgents();
 Vector payModes = billing.getTicketPaymentModes();
@@ -42,6 +43,7 @@ for (int _fi = 0; _fi < allRows.size(); _fi++) {
 }
 
 DecimalFormat df = new DecimalFormat("0.00");
+int tableColCount = allowMultiSelect ? 14 : 13;
 
 // Totals
 double totalBill = 0, totalPaid = 0, totalBal = 0;
@@ -137,6 +139,9 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
 .rpt-table .col-party{min-width:110px;}
 .rpt-table .col-amt{white-space:nowrap;min-width:80px;}
 .rpt-table .col-bal{white-space:nowrap;min-width:80px;}
+.rpt-table .col-sel{width:34px;min-width:34px;text-align:center;}
+.row-sel{width:15px;height:15px;cursor:pointer;accent-color:var(--gold);}
+.row-selected{background:#fff9ec !important;}
 .print-header{display:none;}
 @media print{
   .tw-nav,.rpt-hdr,.sum-row,.no-print{display:none!important;}
@@ -170,9 +175,15 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
 .modal-foot{padding:12px 16px;display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border-l);}
 .info-row{background:#fafafa;border-radius:var(--r-sm);padding:8px 12px;font-size:12px;color:var(--text);}
 .info-row span{font-weight:700;}
+.bulk-bar{display:none;align-items:center;justify-content:space-between;gap:10px;background:#fff8ea;border:1px solid #f4e2bf;border-radius:var(--r-sm);padding:8px 10px;margin-bottom:10px;}
+.bulk-bar.active{display:flex;}
+.bulk-info{font-size:12px;color:var(--text);}
+.bulk-info span{font-weight:800;color:var(--navy);}
+.mfg textarea{border:1.5px solid var(--border);border-radius:var(--r-sm);padding:8px 10px;font-size:13px;outline:none;width:100%;resize:vertical;min-height:72px;font-family:inherit;}
+.mfg textarea:focus{border-color:var(--violet);}
 </style>
 </head>
-<body>
+<body data-bulk-enabled="<%=allowMultiSelect ? "1" : "0"%>">
 <div class="tw">
   <div class="tw-nav"><%@ include file="/assets/navbar/navbar.jsp" %></div>
 
@@ -256,11 +267,27 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
       </div>
     </div>
 
+    <% if (allowMultiSelect && !rows.isEmpty()) { %>
+    <div class="bulk-bar" id="bulkBar">
+      <div class="bulk-info">
+        Selected: <span id="bulkSelCount">0</span> tickets &nbsp;|&nbsp;
+        Total: <span id="bulkSelAmount">&#8377;0.00</span>
+      </div>
+      <button type="button" class="bb bb-gold" id="bulkActionBtn" onclick="openBulkCollectFromSelection()" disabled>
+        <i class="fa-solid <%= "CR".equals(txnFilter) ? "fa-money-bill-wave" : "fa-coins" %>"></i>
+        <%= "CR".equals(txnFilter) ? "Pay Selected" : "Collect Selected" %>
+      </button>
+    </div>
+    <% } %>
+
     <!-- Table -->
     <div class="tbl-wrap">
       <table class="rpt-table">
         <thead>
           <tr>
+            <% if (allowMultiSelect) { %>
+            <th class="col-sel"><input type="checkbox" id="selectAllRows" class="row-sel" title="Select all"></th>
+            <% } %>
             <th>#</th>
             <th class="col-date">Date</th>
             <th class="col-tkt">Ticket / PNR</th>
@@ -280,7 +307,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
         <%
         if (rows.isEmpty()) {
         %>
-          <tr><td colspan="13" style="text-align:center;padding:30px;color:var(--muted);">
+          <tr><td colspan="<%=tableColCount%>" style="text-align:center;padding:30px;color:var(--muted);">
             <i class="fa-solid fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;"></i>
             No ledger entries found for this period.
           </td></tr>
@@ -304,6 +331,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
             String payModeName   = r.get(11) != null ? r.get(11).toString() : "";
             String lastTxnNo     = r.get(12) != null ? r.get(12).toString() : "";
             String pName         = r.get(13) != null ? r.get(13).toString() : "";
+            String partyDispAttr = partyDisp.replace("\"", "&quot;");
 
             String ptBadge = "badge-cust";
             String ptLabel = partyType;
@@ -315,6 +343,19 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
             String balCls   = bal <= 0.005 ? "zero" : "due";
         %>
           <tr>
+            <% if (allowMultiSelect) { %>
+            <td class="col-sel">
+              <% if (bal > 0.005) { %>
+              <input type="checkbox" class="row-sel row-select"
+                     data-booking-id="<%=bookingId%>"
+                     data-party-type="<%=partyType%>"
+                     data-agent-id="<%=agentIdRaw%>"
+                data-party-name="<%=partyDispAttr%>"
+                     data-txn-type="<%=txnType%>"
+                     data-amount="<%=df.format(bal)%>">
+              <% } %>
+            </td>
+            <% } %>
             <td style="color:var(--muted);"><%=sno++%></td>
             <td style="white-space:nowrap;"><%=fdate%></td>
             <td>
@@ -351,7 +392,13 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
             <td class="no-print">
               <%if (bal > 0.005) {%>
               <button class="btn-collect"
-                onclick="openCollect(<%=bookingId%>,'<%=partyType%>','<%=agentIdRaw%>','<%=partyDisp.replace("'","\\'")%>','<%=txnType%>',<%=df.format(bal)%>)">
+                data-booking-id="<%=bookingId%>"
+                data-party-type="<%=partyType%>"
+                data-agent-id="<%=agentIdRaw%>"
+                data-party-name="<%=partyDispAttr%>"
+                data-txn-type="<%=txnType%>"
+                data-max-bal="<%=df.format(bal)%>"
+                onclick="openCollectFromButton(this)">
                 <%if ("CR".equals(txnType)) {%><i class="fa-solid fa-money-bill-wave"></i> Pay<%} else {%><i class="fa-solid fa-coins"></i> Collect<%}%>
               </button>
               <%} else {%>
@@ -366,7 +413,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
         </tbody>
         <tfoot>
           <tr>
-            <td colspan="7" style="color:var(--muted);">TOTALS</td>
+            <td colspan="<%=allowMultiSelect ? 8 : 7%>" style="color:var(--muted);">TOTALS</td>
             <td>&#8377;<%=df.format(totalBill)%></td>
             <td style="color:var(--green);">&#8377;<%=df.format(totalPaid)%></td>
             <td></td><td></td>
@@ -395,7 +442,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
         <input type="date" id="collectDate" value="<%=today%>">
       </div>
       <div class="mfg">
-        <label>Amount to Collect</label>
+        <label id="collectAmountLabel">Amount to Collect</label>
         <input type="number" step="0.01" id="collectAmount" placeholder="0.00">
       </div>
       <div class="mfg">
@@ -411,19 +458,48 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
         <label>Transaction No <span style="color:#dc2626;">*</span></label>
         <input type="text" id="collectTxnNo" placeholder="Txn / Ref No for online payment">
       </div>
+      <div class="mfg">
+        <label>Notes <span style="color:#dc2626;">*</span></label>
+        <textarea id="collectNotes" placeholder="Enter collection notes"></textarea>
+      </div>
     </div>
     <div class="modal-foot">
       <button class="bb" style="background:#f1f5f9;color:var(--text);border-color:var(--border);" onclick="closeCollect()">Cancel</button>
-      <button class="bb bb-gold" onclick="saveCollect()"><i class="fa-solid fa-money-bill-wave"></i> Pay</button>
+      <button class="bb bb-gold" id="collectSubmitBtn" onclick="saveCollect()"><i class="fa-solid fa-money-bill-wave"></i> Pay</button>
     </div>
   </div>
 </div>
 
 <script>
 const ctx = '<%=ctx%>';
+const isBulkEnabled = document.body.getAttribute('data-bulk-enabled') === '1';
+let _collectMode = 'single';
 let _cBookingId='', _cPartyType='', _cAgentId='', _cPartyName='', _cTxnType='', _cMaxBal=0;
+let _bulkItems = [];
+
+function setSubmitButtonForTxn(txnType) {
+  const btn = document.getElementById('collectSubmitBtn');
+  const amtLbl = document.getElementById('collectAmountLabel');
+  const isPay = txnType === 'CR';
+  btn.innerHTML = isPay
+    ? '<i class="fa-solid fa-money-bill-wave"></i> Pay'
+    : '<i class="fa-solid fa-coins"></i> Collect';
+  if (amtLbl) amtLbl.textContent = isPay ? 'Amount to Pay' : 'Amount to Collect';
+}
+
+function openCollectFromButton(btn) {
+  if (!btn) return;
+  const bookingId = parseInt(btn.getAttribute('data-booking-id') || '0', 10);
+  const partyType = btn.getAttribute('data-party-type') || '';
+  const agentId = btn.getAttribute('data-agent-id') || '0';
+  const partyName = btn.getAttribute('data-party-name') || '';
+  const txnType = btn.getAttribute('data-txn-type') || 'DR';
+  const maxBal = parseFloat(btn.getAttribute('data-max-bal') || '0');
+  openCollect(bookingId, partyType, agentId, partyName, txnType, maxBal);
+}
 
 function openCollect(bookingId, partyType, agentId, partyName, txnType, maxBal) {
+  _collectMode = 'single';
     _cBookingId = bookingId;
     _cPartyType = partyType;
     _cAgentId   = agentId;
@@ -437,30 +513,49 @@ function openCollect(bookingId, partyType, agentId, partyName, txnType, maxBal) 
     .then(r => r.json())
     .then(d => {
         if (d.duplicate) {
-            alert('⚠️ Duplicate Entry Detected!\n\nThis amount has already been collected today for this booking.\n\nEntered by : ' + d.enteredBy + '\nDate & Time: ' + d.dateTime + '\n\nClick OK to reload the page.');
+          alert('Duplicate Entry Detected!\n\nThis amount has already been collected today for this booking.\n\nEntered by : ' + d.enteredBy + '\nDate & Time: ' + d.dateTime + '\n\nClick OK to reload the page.');
             location.reload();
             return;
         }
-        _showCollectModal(partyName, maxBal);
+        _showCollectModal(partyName, maxBal, txnType, false);
     })
     .catch(() => {
         // On network error, proceed to modal
-        _showCollectModal(partyName, maxBal);
+        _showCollectModal(partyName, maxBal, txnType, false);
     });
 }
 
-function _showCollectModal(partyName, maxBal) {
+    function openBulkCollectFromSelection() {
+      if (!isBulkEnabled) return;
+      _bulkItems = getSelectedRows();
+      if (_bulkItems.length === 0) {
+        alert('Select at least one ticket.');
+        return;
+      }
+      _collectMode = 'bulk';
+      const total = _bulkItems.reduce((sum, item) => sum + item.amount, 0);
+      const txnType = _bulkItems[0].txnType;
+      _showCollectModal(_bulkItems.length + ' tickets selected', total, txnType, true);
+    }
+
+    function _showCollectModal(partyName, maxBal, txnType, isBulk) {
     document.getElementById('collectInfo').innerHTML =
-        'Party: <span>' + partyName + '</span> &nbsp;|&nbsp; Balance Due: <span style="color:#dc2626;">&#8377;' + maxBal.toFixed(2) + '</span>';
+        (isBulk ? 'Selected: <span>' + partyName + '</span>' : 'Party: <span>' + partyName + '</span>') +
+        ' &nbsp;|&nbsp; Balance Due: <span style="color:#dc2626;">&#8377;' + maxBal.toFixed(2) + '</span>';
     document.getElementById('collectAmount').value = maxBal.toFixed(2);
+      document.getElementById('collectAmount').readOnly = !!isBulk;
     document.getElementById('collectMode').value = '';
     document.getElementById('collectTxnRow').style.display = 'none';
     document.getElementById('collectTxnNo').value = '';
+      document.getElementById('collectNotes').value = '';
+      setSubmitButtonForTxn(txnType);
     document.getElementById('collectModal').classList.add('active');
 }
+
 function closeCollect() {
     document.getElementById('collectModal').classList.remove('active');
 }
+
 function handleCollectModeChange() {
     const sel = document.getElementById('collectMode');
     const opt = sel.options[sel.selectedIndex];
@@ -468,27 +563,50 @@ function handleCollectModeChange() {
     document.getElementById('collectTxnRow').style.display = isOnline ? '' : 'none';
     if (!isOnline) document.getElementById('collectTxnNo').value = '';
 }
+
 function saveCollect() {
     const amt  = parseFloat(document.getElementById('collectAmount').value);
     const mode = document.getElementById('collectMode').value;
     const date = document.getElementById('collectDate').value;
     const txnNo = document.getElementById('collectTxnNo').value.trim();
+  const notes = document.getElementById('collectNotes').value.trim();
     if (!amt || amt <= 0) { alert('Enter a valid amount'); return; }
     if (!mode) { alert('Select a payment mode'); return; }
     if (!date) { alert('Select a collection date'); return; }
+  if (!notes) { alert('Enter notes'); return; }
     const opt = document.getElementById('collectMode').options[document.getElementById('collectMode').selectedIndex];
     if (opt.getAttribute('data-cash') === '0' && !txnNo) { alert('Enter Transaction No for online payment'); return; }
 
     const params = new URLSearchParams();
+    params.set('payModeId',      mode);
+    params.set('collectionDate', date);
+    params.set('txnNo',          txnNo);
+  params.set('notes',          notes);
+
+  if (_collectMode === 'bulk') {
+    const selected = getSelectedRows();
+    if (selected.length === 0) {
+      alert('Select at least one ticket.');
+      closeCollect();
+      return;
+    }
+    for (let i = 0; i < selected.length; i++) {
+      const row = selected[i];
+      params.append('bookingIds[]', row.bookingId);
+      params.append('partyTypes[]', row.partyType);
+      params.append('agentIds[]', row.agentId);
+      params.append('partyNames[]', row.partyName);
+      params.append('txnTypes[]', row.txnType);
+      params.append('amounts[]', row.amount.toFixed(2));
+    }
+  } else {
     params.set('bookingId',      _cBookingId);
     params.set('partyType',      _cPartyType);
     params.set('agentId',        _cAgentId);
     params.set('partyName',      _cPartyName);
     params.set('txnType',        _cTxnType);
     params.set('amount',         amt);
-    params.set('payModeId',      mode);
-    params.set('collectionDate', date);
-    params.set('txnNo',          txnNo);
+  }
 
     fetch(ctx + '/ticketbooking/collectBalance.jsp', {
         method: 'POST',
@@ -507,6 +625,44 @@ function saveCollect() {
     .catch(err => alert('Error: ' + err.message));
 }
 
+  function getSelectedRows() {
+    const selected = [];
+    const checks = document.querySelectorAll('.row-select:checked');
+    checks.forEach(function(chk) {
+      const row = chk.closest('tr');
+      if (row) row.classList.add('row-selected');
+      selected.push({
+        bookingId: chk.getAttribute('data-booking-id'),
+        partyType: chk.getAttribute('data-party-type'),
+        agentId: chk.getAttribute('data-agent-id') || '0',
+        partyName: chk.getAttribute('data-party-name') || '',
+        txnType: chk.getAttribute('data-txn-type'),
+        amount: parseFloat(chk.getAttribute('data-amount') || '0')
+      });
+    });
+    document.querySelectorAll('.row-select:not(:checked)').forEach(function(chk) {
+      const row = chk.closest('tr');
+      if (row) row.classList.remove('row-selected');
+    });
+    return selected;
+  }
+
+  function refreshBulkSelectionState() {
+    if (!isBulkEnabled) return;
+    const selected = getSelectedRows();
+    const total = selected.reduce((sum, item) => sum + item.amount, 0);
+    const countElm = document.getElementById('bulkSelCount');
+    const amtElm = document.getElementById('bulkSelAmount');
+    const actionBtn = document.getElementById('bulkActionBtn');
+    const bulkBar = document.getElementById('bulkBar');
+    if (!countElm || !amtElm || !actionBtn || !bulkBar) return;
+
+    bulkBar.classList.toggle('active', selected.length > 0);
+    countElm.textContent = String(selected.length);
+    amtElm.innerHTML = '&#8377;' + total.toFixed(2);
+    actionBtn.disabled = selected.length === 0;
+  }
+
 // Close modal on overlay click
 document.getElementById('collectModal').addEventListener('click', function(e) {
     if (e.target === this) closeCollect();
@@ -514,6 +670,27 @@ document.getElementById('collectModal').addEventListener('click', function(e) {
 
 // Auto-collapse sidebar on page load (desktop only)
 document.addEventListener('DOMContentLoaded', function() {
+  if (isBulkEnabled) {
+      const selectAll = document.getElementById('selectAllRows');
+      const rowChecks = document.querySelectorAll('.row-select');
+      if (selectAll) {
+        selectAll.addEventListener('change', function() {
+          rowChecks.forEach(function(chk) { chk.checked = selectAll.checked; });
+          refreshBulkSelectionState();
+        });
+      }
+      rowChecks.forEach(function(chk) {
+        chk.addEventListener('change', function() {
+          if (selectAll) {
+            const allChecked = rowChecks.length > 0 && Array.from(rowChecks).every(function(c) { return c.checked; });
+            selectAll.checked = allChecked;
+          }
+          refreshBulkSelectionState();
+        });
+      });
+      refreshBulkSelectionState();
+    }
+
     if (window.innerWidth > 768) {
         var sb = document.getElementById('sidebar');
         if (sb) sb.classList.add('hidden');

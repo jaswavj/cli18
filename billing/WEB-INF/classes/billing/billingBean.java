@@ -7437,6 +7437,14 @@ public Vector getAgentPaidReport(String fromDate, String toDate, int agentId) {
 public String collectTicketBalance(int bookingId, String partyType, Integer agentId,
         String partyName, String txnType, double collectedAmount,
         Integer paymentModeId, String collectionDate, String transactionNo, Integer createdBy) {
+    return collectTicketBalance(bookingId, partyType, agentId, partyName, txnType,
+        collectedAmount, paymentModeId, collectionDate, transactionNo, null, createdBy);
+}
+
+public String collectTicketBalance(int bookingId, String partyType, Integer agentId,
+    String partyName, String txnType, double collectedAmount,
+    Integer paymentModeId, String collectionDate, String transactionNo,
+    String notes, Integer createdBy) {
     Connection con = null; PreparedStatement pt = null;
     try {
         con = util.DBConnectionManager.getConnectionFromPool();
@@ -7457,11 +7465,87 @@ public String collectTicketBalance(int bookingId, String partyType, Integer agen
         if (paymentModeId != null) pt.setInt(7, paymentModeId); else pt.setNull(7, Types.INTEGER);
         String tnStr = (transactionNo != null && !transactionNo.trim().isEmpty()) ? transactionNo.trim() : null;
         if (tnStr != null) pt.setString(8, tnStr); else pt.setNull(8, Types.VARCHAR);
-        pt.setString(9, "Balance collection");
+        String notesStr = (notes != null && !notes.trim().isEmpty()) ? notes.trim() : "Balance collection";
+        pt.setString(9, notesStr);
         pt.setString(10, collectionDate);
         if (createdBy != null) pt.setInt(11, createdBy); else pt.setNull(11, Types.INTEGER);
         int rows = pt.executeUpdate();
         if (rows == 0) throw new Exception("No rows inserted");
+        con.commit();
+        return "SUCCESS";
+    } catch (Exception e) {
+        if (con != null) try { con.rollback(); } catch (Exception ex) { ; }
+        e.printStackTrace();
+        return "ERROR:" + e.getMessage();
+    } finally {
+        if (pt  != null) try { pt.close();  } catch (Exception e) { ; }
+        if (con != null) try { con.setAutoCommit(true); con.close(); } catch (Exception e) { ; }
+    }
+}
+
+// Bulk balance collection save for multiple bookings in one transaction.
+public String collectTicketBalanceBulk(int[] bookingIds, String[] partyTypes, Integer[] agentIds,
+        String[] partyNames, String[] txnTypes, double[] collectedAmounts,
+        Integer paymentModeId, String collectionDate, String transactionNo,
+        String notes, Integer createdBy) {
+    Connection con = null; PreparedStatement pt = null;
+    try {
+        if (bookingIds == null || bookingIds.length == 0) return "ERROR:No bookings selected";
+        if (partyTypes == null || partyNames == null || txnTypes == null || collectedAmounts == null)
+            return "ERROR:Invalid collection payload";
+        if (partyTypes.length != bookingIds.length || partyNames.length != bookingIds.length ||
+                txnTypes.length != bookingIds.length || collectedAmounts.length != bookingIds.length)
+            return "ERROR:Payload size mismatch";
+        if (agentIds != null && agentIds.length != bookingIds.length)
+            return "ERROR:Agent payload size mismatch";
+
+        con = util.DBConnectionManager.getConnectionFromPool();
+        con.setAutoCommit(false);
+        String sql =
+            "INSERT INTO ticket_ledger " +
+            "(booking_id, party_type, agent_id, party_name, transaction_type, bill_amount, amount, payment_mode_id, transaction_no, remarks, transaction_date, created_by) " +
+            "VALUES (?,?,?,?,?,0,?,?,?,?,?,?)";
+        pt = con.prepareStatement(sql);
+
+        String notesStr = (notes != null && !notes.trim().isEmpty()) ? notes.trim() : "Balance collection";
+        String tnStr = (transactionNo != null && !transactionNo.trim().isEmpty()) ? transactionNo.trim() : null;
+
+        for (int i = 0; i < bookingIds.length; i++) {
+            if (collectedAmounts[i] <= 0) continue;
+
+            pt.setInt(1, bookingIds[i]);
+            pt.setString(2, partyTypes[i]);
+
+            Integer agentId = (agentIds != null) ? agentIds[i] : null;
+            if (agentId != null && agentId.intValue() > 0) pt.setInt(3, agentId.intValue());
+            else pt.setNull(3, Types.INTEGER);
+
+            // Keep party_name NULL when agent_id exists to preserve grouping behavior.
+            if (agentId != null && agentId.intValue() > 0) pt.setNull(4, Types.VARCHAR);
+            else pt.setString(4, (partyNames[i] != null) ? partyNames[i] : "");
+
+            pt.setString(5, txnTypes[i]);
+            pt.setDouble(6, collectedAmounts[i]);
+
+            if (paymentModeId != null) pt.setInt(7, paymentModeId.intValue());
+            else pt.setNull(7, Types.INTEGER);
+
+            if (tnStr != null) pt.setString(8, tnStr); else pt.setNull(8, Types.VARCHAR);
+            pt.setString(9, notesStr);
+            pt.setString(10, collectionDate);
+            if (createdBy != null) pt.setInt(11, createdBy.intValue()); else pt.setNull(11, Types.INTEGER);
+            pt.addBatch();
+        }
+
+        int[] counts = pt.executeBatch();
+        int inserted = 0;
+        if (counts != null) {
+            for (int c : counts) {
+                if (c > 0 || c == Statement.SUCCESS_NO_INFO) inserted++;
+            }
+        }
+        if (inserted == 0) throw new Exception("No rows inserted");
+
         con.commit();
         return "SUCCESS";
     } catch (Exception e) {
@@ -7483,6 +7567,7 @@ public String collectTicketBalance(int bookingId, String partyType, Integer agen
 //      [5]party_display [6]txn_type [7]bill_amount [8]amount_paid
 //      [9]payment_mode [10]transaction_no [11]txn_date
 //      [12]ow_from [13]ow_to [14]agent_id [15]party_name [16]booking_date
+//      [17]remarks
 // ─────────────────────────────────────────────────────────────────────────────
 public Vector getTicketPaymentsDetail(String fromDate, String toDate, int agentId, String partyTypeScope) {
     Vector result = new Vector();
@@ -7505,7 +7590,7 @@ public Vector getTicketPaymentsDetail(String fromDate, String toDate, int agentI
             " l.transaction_type, COALESCE(l.bill_amount,0), COALESCE(l.amount,0)," +
             " COALESCE(pm.modes,'-') AS payment_mode, COALESCE(l.transaction_no,'') AS txn_no," +
             " l.transaction_date, COALESCE(cf.name,'') AS ow_from, COALESCE(ct.name,'') AS ow_to," +
-            " COALESCE(l.agent_id,0), COALESCE(l.party_name,''), b.booking_date" +
+            " COALESCE(l.agent_id,0), COALESCE(l.party_name,''), b.booking_date, COALESCE(l.remarks,'')" +
             " FROM ticket_ledger l" +
             " JOIN ticket_booking b ON b.id = l.booking_id" +
             " LEFT JOIN ticket_agent ta ON ta.id = l.agent_id" +
