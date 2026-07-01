@@ -6213,6 +6213,39 @@ public Vector getTicketAgents() throws Exception {
     }
 }
 
+/** Returns [totalAdvance, totalDue] from agent_account. agentId=0 sums all agents. */
+public Vector getAgentAccountTotals(int agentId) {
+    Vector result = new Vector();
+    result.add(0.0);
+    result.add(0.0);
+    Connection con = null;
+    PreparedStatement pt = null;
+    ResultSet rs = null;
+    try {
+        con = util.DBConnectionManager.getConnectionFromPool();
+        if (agentId > 0) {
+            pt = con.prepareStatement(
+                "SELECT COALESCE(SUM(advance),0), COALESCE(SUM(due),0) FROM agent_account WHERE agent_id = ?");
+            pt.setInt(1, agentId);
+        } else {
+            pt = con.prepareStatement(
+                "SELECT COALESCE(SUM(advance),0), COALESCE(SUM(due),0) FROM agent_account");
+        }
+        rs = pt.executeQuery();
+        if (rs.next()) {
+            result.set(0, rs.getDouble(1));
+            result.set(1, rs.getDouble(2));
+        }
+    } catch (Exception e) {
+        e.printStackTrace();
+    } finally {
+        if (rs != null) try { rs.close(); } catch (SQLException e) { ; }
+        if (pt != null) try { pt.close(); } catch (SQLException e) { ; }
+        if (con != null) try { con.close(); } catch (Exception e) {}
+    }
+    return result;
+}
+
 public Vector getTicketPaymentModes() throws Exception {
     Connection con = null;
     PreparedStatement pt = null;
@@ -6259,6 +6292,203 @@ public String getTicketNo(int id) {
         try { if (con!=null) con.close(); } catch (Exception e) {}
     }
     return String.format("TKT-%03d", id);
+}
+
+/** Ensure one agent_account row exists for the given ticket agent. */
+private void ensureAgentAccount(Connection con, int agentId) throws SQLException {
+    PreparedStatement pt = con.prepareStatement(
+        "INSERT INTO agent_account (agent_id, advance, due) " +
+        "SELECT ?, 0, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM agent_account WHERE agent_id = ?)");
+    pt.setInt(1, agentId);
+    pt.setInt(2, agentId);
+    pt.executeUpdate();
+    pt.close();
+}
+
+/**
+ * Buy from agent unpaid balance: offset existing due first, then add remainder to advance.
+ */
+private void updateAgentAccountBuyBalance(Connection con, int agentId, double balance) throws SQLException {
+    if (balance <= 0) return;
+    ensureAgentAccount(con, agentId);
+
+    double due = 0, advance = 0;
+    PreparedStatement pt = con.prepareStatement(
+        "SELECT COALESCE(due,0), COALESCE(advance,0) FROM agent_account WHERE agent_id = ? FOR UPDATE");
+    pt.setInt(1, agentId);
+    ResultSet rs = pt.executeQuery();
+    if (rs.next()) {
+        due = rs.getDouble(1);
+        advance = rs.getDouble(2);
+    }
+    rs.close();
+    pt.close();
+
+    double remaining = balance;
+    if (due > 0) {
+        double offset = Math.min(due, remaining);
+        due -= offset;
+        remaining -= offset;
+    }
+    advance += remaining;
+
+    pt = con.prepareStatement("UPDATE agent_account SET due = ?, advance = ? WHERE agent_id = ?");
+    pt.setDouble(1, due);
+    pt.setDouble(2, advance);
+    pt.setInt(3, agentId);
+    pt.executeUpdate();
+    pt.close();
+}
+
+/**
+ * Sell to agent unpaid balance: offset existing advance first, then add remainder to due.
+ */
+private void updateAgentAccountSellBalance(Connection con, int agentId, double balance) throws SQLException {
+    if (balance <= 0) return;
+    ensureAgentAccount(con, agentId);
+
+    double due = 0, advance = 0;
+    PreparedStatement pt = con.prepareStatement(
+        "SELECT COALESCE(due,0), COALESCE(advance,0) FROM agent_account WHERE agent_id = ? FOR UPDATE");
+    pt.setInt(1, agentId);
+    ResultSet rs = pt.executeQuery();
+    if (rs.next()) {
+        due = rs.getDouble(1);
+        advance = rs.getDouble(2);
+    }
+    rs.close();
+    pt.close();
+
+    double remaining = balance;
+    if (advance > 0) {
+        double offset = Math.min(advance, remaining);
+        advance -= offset;
+        remaining -= offset;
+    }
+    due += remaining;
+
+    pt = con.prepareStatement("UPDATE agent_account SET due = ?, advance = ? WHERE agent_id = ?");
+    pt.setDouble(1, due);
+    pt.setDouble(2, advance);
+    pt.setInt(3, agentId);
+    pt.executeUpdate();
+    pt.close();
+}
+
+private void insertAgentAccountLedger(Connection con, int agentId, String txnType, double amount,
+        Integer paymentModeId, String txnNo, String remarks, String chargeType,
+        String txnDate, Integer createdBy) throws SQLException {
+    PreparedStatement pt = con.prepareStatement(
+        "INSERT INTO ticket_ledger " +
+        "(booking_id, party_type, agent_id, party_name, transaction_type, bill_amount, amount, " +
+        " payment_mode_id, transaction_no, remarks, transaction_date, charge_type, created_by) " +
+        "VALUES (0, 'AGENT_ACCOUNT', ?, NULL, ?, 0, ?, ?, ?, ?, ?, ?, ?)");
+    pt.setInt(1, agentId);
+    pt.setString(2, txnType);
+    pt.setDouble(3, amount);
+    if (paymentModeId != null) pt.setInt(4, paymentModeId); else pt.setNull(4, Types.INTEGER);
+    String tnStr = (txnNo != null && !txnNo.trim().isEmpty()) ? txnNo.trim() : null;
+    if (tnStr != null) pt.setString(5, tnStr); else pt.setNull(5, Types.VARCHAR);
+    pt.setString(6, remarks);
+    pt.setString(7, txnDate);
+    pt.setString(8, chargeType);
+    if (createdBy != null) pt.setInt(9, createdBy); else pt.setNull(9, Types.INTEGER);
+    pt.executeUpdate();
+    pt.close();
+}
+
+/**
+ * Agent-level pay (clear advance) or collect (clear balance/due).
+ * PAY: reduces advance first; excess increases due (agent receivable from overpay).
+ * COLLECT: reduces due first; excess reduces advance (advance collect).
+ */
+public String saveAgentAccountPayCollect(int agentId, String action, double amount,
+        Integer paymentModeId, String txnDate, String txnNo, String notes, Integer createdBy) {
+    if (agentId <= 0) return "ERROR:Select an agent";
+    if (amount <= 0.005) return "ERROR:Enter a valid amount";
+    if (notes == null || notes.trim().isEmpty()) return "ERROR:Notes is required";
+    if (txnDate == null || txnDate.trim().isEmpty()) {
+        txnDate = new java.text.SimpleDateFormat("yyyy-MM-dd").format(new java.util.Date());
+    }
+    String notesTrim = notes.trim();
+    Connection con = null;
+    PreparedStatement pt = null;
+    ResultSet rs = null;
+    try {
+        con = util.DBConnectionManager.getConnectionFromPool();
+        con.setAutoCommit(false);
+        ensureAgentAccount(con, agentId);
+
+        pt = con.prepareStatement(
+            "SELECT COALESCE(advance,0), COALESCE(due,0) FROM agent_account WHERE agent_id = ? FOR UPDATE");
+        pt.setInt(1, agentId);
+        rs = pt.executeQuery();
+        double advance = 0, due = 0;
+        if (rs.next()) {
+            advance = rs.getDouble(1);
+            due = rs.getDouble(2);
+        }
+        rs.close(); rs = null;
+        pt.close(); pt = null;
+
+        if ("PAY".equals(action)) {
+            double payBalance = Math.min(amount, advance);
+            double excess = amount - payBalance;
+            advance -= payBalance;
+            due += excess;
+
+            if (payBalance > 0.005) {
+                insertAgentAccountLedger(con, agentId, "CR", payBalance, paymentModeId, txnNo,
+                    "Pay balance | " + notesTrim, "BALANCE_PAY", txnDate, createdBy);
+            }
+            if (excess > 0.005) {
+                insertAgentAccountLedger(con, agentId, "DR", excess, paymentModeId, txnNo,
+                    "Advance paid | " + notesTrim, "ADVANCE_PAID", txnDate, createdBy);
+            }
+        } else if ("COLLECT".equals(action)) {
+            double collectBalance = Math.min(amount, due);
+            double excess = amount - collectBalance;
+            due -= collectBalance;
+            double advanceCollect = Math.min(excess, advance);
+            advance -= advanceCollect;
+            excess -= advanceCollect;
+
+            if (collectBalance > 0.005) {
+                insertAgentAccountLedger(con, agentId, "DR", collectBalance, paymentModeId, txnNo,
+                    "Balance collection | " + notesTrim, "BALANCE_COLLECT", txnDate, createdBy);
+            }
+            if (advanceCollect > 0.005) {
+                insertAgentAccountLedger(con, agentId, "CR", advanceCollect, paymentModeId, txnNo,
+                    "Advance collect | " + notesTrim, "ADVANCE_COLLECT", txnDate, createdBy);
+            }
+            // Over-collection beyond due + existing advance → credit with agent (increase advance)
+            if (excess > 0.005) {
+                advance += excess;
+                insertAgentAccountLedger(con, agentId, "CR", excess, paymentModeId, txnNo,
+                    "Advance credit | " + notesTrim, "ADVANCE_CREDIT", txnDate, createdBy);
+            }
+        } else {
+            return "ERROR:Invalid action";
+        }
+
+        pt = con.prepareStatement("UPDATE agent_account SET advance = ?, due = ? WHERE agent_id = ?");
+        pt.setDouble(1, advance);
+        pt.setDouble(2, due);
+        pt.setInt(3, agentId);
+        pt.executeUpdate();
+        pt.close();
+
+        con.commit();
+        return "SUCCESS";
+    } catch (Exception e) {
+        if (con != null) try { con.rollback(); } catch (SQLException ex) { ; }
+        e.printStackTrace();
+        return "ERROR:" + e.getMessage();
+    } finally {
+        if (rs != null) try { rs.close(); } catch (SQLException e) { ; }
+        if (pt != null) try { pt.close(); } catch (SQLException e) { ; }
+        if (con != null) try { con.setAutoCommit(true); con.close(); } catch (Exception e) {}
+    }
 }
 
 public int saveTicketBooking(
@@ -6423,6 +6653,22 @@ public int saveTicketBooking(
             pt.setString(11, bookingDate);
             pt.executeUpdate();
             pt.close();
+        }
+
+        // ── 4b. Agent account (unpaid buy/sell balances) ───────────────────
+        if (buyAgentId != null && buyAmount != null && buyAmount > 0) {
+            double bPaid = (buyPaidAmount != null) ? buyPaidAmount : 0.0;
+            double buyBal = buyAmount - bPaid;
+            if (buyBal > 0) {
+                updateAgentAccountBuyBalance(con, buyAgentId, buyBal);
+            }
+        }
+        if (sellAgentId != null && sellAmount != null && sellAmount > 0) {
+            double sPaid = (sellPaidAmount != null) ? sellPaidAmount : 0.0;
+            double sellBal = sellAmount - sPaid;
+            if (sellBal > 0) {
+                updateAgentAccountSellBalance(con, sellAgentId, sellBal);
+            }
         }
 
         // ── 5. Autocomplete lookups (same connection / same commit) ────────
@@ -7285,29 +7531,35 @@ public Vector getTicketLedgerReport(String fromDate, String toDate, int agentId)
     try {
         con = util.DBConnectionManager.getConnectionFromPool();
         String sql =
-            "SELECT l.booking_id, b.ticket_no, b.pnr, l.party_type," +
-            " COALESCE(a.name, l.party_name) AS party_display," +
-            " SUM(CASE WHEN l.transaction_type='CR' THEN COALESCE(l.bill_amount,0) ELSE 0 END)" +
-            "  - SUM(CASE WHEN l.transaction_type='DR' THEN COALESCE(l.bill_amount,0) ELSE 0 END) AS net_bill," +
-            " SUM(CASE WHEN l.transaction_type='CR' THEN COALESCE(l.amount,0) ELSE 0 END)" +
-            "  - SUM(CASE WHEN l.transaction_type='DR' THEN COALESCE(l.amount,0) ELSE 0 END) AS net_paid," +
-            " SUM(CASE WHEN l.transaction_type='CR' THEN COALESCE(l.bill_amount,0)-COALESCE(l.amount,0)" +
-            "          WHEN l.transaction_type='DR' THEN -(COALESCE(l.bill_amount,0)-COALESCE(l.amount,0))" +
-            "          ELSE 0 END) AS net_balance," +
-            " b.booking_date AS first_date," +
+            "SELECT l.booking_id," +
+            " CASE WHEN l.booking_id > 0 THEN COALESCE(b.ticket_no, CONCAT('TKT-', LPAD(b.id, 3, '0'))) ELSE '-' END AS ticket_no," +
+            " COALESCE(b.pnr, '-') AS pnr," +
+            " l.party_type," +
+            " COALESCE(a.name, l.party_name, '-') AS party_display," +
+            " COALESCE(l.bill_amount, 0) AS bill_amount," +
+            " COALESCE(l.amount, 0) AS paid_amount," +
+            " CASE WHEN COALESCE(l.bill_amount, 0) > 0 THEN COALESCE(l.bill_amount, 0) - COALESCE(l.amount, 0)" +
+            "      ELSE COALESCE(l.amount, 0) END AS line_balance," +
+            " l.transaction_date," +
             " l.agent_id, l.party_name," +
-            " MAX(COALESCE(pm.modes,'')) AS payment_mode_name," +
-            " MAX(COALESCE(l.transaction_no,'')) AS last_txn_no," +
-            " MAX(COALESCE(pax.pax_names,'')) AS passenger_names" +
+            " COALESCE(pm.modes, '') AS payment_mode_name," +
+            " COALESCE(l.transaction_no, '') AS txn_no," +
+            " COALESCE(pax.pax_names, '') AS passenger_names," +
+            " l.transaction_type," +
+            " COALESCE(l.remarks, '') AS remarks," +
+            " COALESCE(l.charge_type, '') AS charge_type," +
+            " COALESCE(DATE_FORMAT(l.created_at, '%H:%i'), '') AS txn_time," +
+            " l.id AS ledger_id" +
             " FROM ticket_ledger l" +
-            " JOIN ticket_booking b ON b.id = l.booking_id" +
+            " LEFT JOIN ticket_booking b ON b.id = l.booking_id AND l.booking_id > 0" +
             " LEFT JOIN ticket_agent a ON a.id = l.agent_id" +
             " LEFT JOIN ticket_payment_mode pm ON pm.id = l.payment_mode_id" +
-            " LEFT JOIN (SELECT booking_id, GROUP_CONCAT(passenger_name ORDER BY seat_no SEPARATOR ', ') AS pax_names FROM ticket_passenger GROUP BY booking_id) pax ON pax.booking_id = l.booking_id" +
-            " WHERE b.booking_date BETWEEN ? AND ?" +
+            " LEFT JOIN (SELECT booking_id, GROUP_CONCAT(passenger_name ORDER BY seat_no SEPARATOR ', ') AS pax_names" +
+            "            FROM ticket_passenger GROUP BY booking_id) pax ON pax.booking_id = l.booking_id AND l.booking_id > 0" +
+            " WHERE l.transaction_date BETWEEN ? AND ?" +
+            " AND l.agent_id IS NOT NULL" +
             (agentId > 0 ? " AND l.agent_id = ?" : "") +
-            " GROUP BY l.booking_id, l.party_type, l.agent_id, l.party_name, b.ticket_no, b.pnr, a.name, b.booking_date, pax.pax_names" +
-            " ORDER BY b.booking_date DESC, l.booking_id DESC";
+            " ORDER BY l.transaction_date ASC, l.created_at ASC, l.id ASC";
         pt = con.prepareStatement(sql);
         pt.setString(1, fromDate);
         pt.setString(2, toDate);

@@ -1,5 +1,40 @@
 <%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8"%>
-<%@ page import="java.util.*,java.text.SimpleDateFormat"%>
+<%@ page import="java.util.*,java.text.SimpleDateFormat,java.text.DecimalFormat"%>
+<%!
+private void applyLedgerRunningRow(String partyType, String chargeType, String txnType,
+        double bill, double paid, double[] state) {
+    if ("BALANCE_COLLECT".equals(chargeType)) {
+        double amt = paid;
+        double c = Math.min(amt, state[0]); state[0] -= c; amt -= c;
+        c = Math.min(amt, state[1]); state[1] -= c; amt -= c;
+        if (amt > 0.005) state[1] += amt;
+    } else if ("BALANCE_PAY".equals(chargeType)) {
+        double amt = paid;
+        double p = Math.min(amt, state[1]); state[1] -= p; amt -= p;
+        if (amt > 0.005) state[0] += amt;
+    } else if ("ADVANCE_COLLECT".equals(chargeType)) {
+        state[1] -= Math.min(paid, state[1]);
+    } else if ("ADVANCE_PAID".equals(chargeType)) {
+        state[0] += paid;
+    } else if ("ADVANCE_CREDIT".equals(chargeType)) {
+        state[1] += paid;
+    } else if (bill > 0.005) {
+        double unpaid = Math.max(0, bill - paid);
+        if ("DR".equals(txnType) || "SELL_AGENT".equals(partyType)) state[0] += unpaid;
+        else if ("CR".equals(txnType) || "BUY_AGENT".equals(partyType)) state[1] += unpaid;
+    }
+}
+private String runningBalanceClass(double runDue, double runAdvance) {
+    if (runDue > 0.005) return "due";
+    if (runAdvance > 0.005) return "credit";
+    return "zero";
+}
+private double runningBalanceAmount(double runDue, double runAdvance) {
+    if (runDue > 0.005) return runDue;
+    if (runAdvance > 0.005) return runAdvance;
+    return 0;
+}
+%>
 <jsp:useBean id="billing" class="billing.billingBean" />
 <%
 Integer userId = (Integer) session.getAttribute("userId");
@@ -35,12 +70,28 @@ try {
 } catch (Exception e) { /* use default */ }
 
 // Data (only load when agent is selected)
-Vector rows = new Vector();
+Vector ledgerRows = new Vector();
 String selectedAgentName = "";
+double totalAdvance = 0, totalAgentDue = 0;
 Vector payRows = new Vector();
+DecimalFormat df = new DecimalFormat("0.00");
+double totalBill = 0, totalPaid = 0, lastBal = 0;
+String lastBalCls = "zero";
+double[] runState = new double[]{0, 0};
+
 if (agentId > 0) {
-    rows = billing.getAgentStatement(fromDate, toDate, agentId);
-    // Ticket-wise view should include both sides where this agent appears.
+    ledgerRows = billing.getTicketLedgerReport(fromDate, toDate, agentId);
+    Vector agentAcctTotals = billing.getAgentAccountTotals(agentId);
+    totalAdvance = agentAcctTotals.size() > 0 ? Double.parseDouble(agentAcctTotals.get(0).toString()) : 0;
+    totalAgentDue = agentAcctTotals.size() > 1 ? Double.parseDouble(agentAcctTotals.get(1).toString()) : 0;
+    for (int i = 0; i < agents.size(); i++) {
+        Vector a = (Vector) agents.get(i);
+        if (Integer.parseInt(a.get(0).toString()) == agentId) {
+            selectedAgentName = a.get(1).toString();
+            break;
+        }
+    }
+    // Ticket-wise view data
     Vector payRowsBuy  = billing.getTicketPaymentsDetail(fromDate, toDate, agentId, "BUY");
     Vector payRowsSell = billing.getTicketPaymentsDetail(fromDate, toDate, agentId, "SELL");
     for (int i = 0; i < payRowsBuy.size(); i++)  payRows.add(payRowsBuy.get(i));
@@ -63,19 +114,6 @@ if (agentId > 0) {
         }
     });
 
-    // Get agent name from OPEN row
-    if (rows.size() > 0) {
-        Vector firstRow = (Vector) rows.get(0);
-        selectedAgentName = firstRow.get(11) != null ? firstRow.get(11).toString() : "";
-    }
-    if (selectedAgentName.isEmpty()) {
-        for (int i = 0; i < agents.size(); i++) {
-            Vector a = (Vector) agents.get(i);
-            if (a.get(0).toString().equals(String.valueOf(agentId))) {
-                selectedAgentName = a.get(1).toString(); break;
-            }
-        }
-    }
 }
 
 // Format date for display e.g. 07/05/2026
@@ -84,18 +122,6 @@ java.text.SimpleDateFormat iFmt  = new java.text.SimpleDateFormat("yyyy-MM-dd");
 String fromDisp = fromDate, toDisp = toDate;
 try { fromDisp = dpFmt.format(iFmt.parse(fromDate)); } catch (Exception e) {}
 try { toDisp   = dpFmt.format(iFmt.parse(toDate));   } catch (Exception e) {}
-
-// Totals from TOTAL row
-String totalDrStr = "0.00", totalCrStr = "0.00", closingBal = "0.00", closingDir = "NIL";
-if (rows.size() > 0) {
-    Vector lastRow = (Vector) rows.get(rows.size() - 1);
-    if ("TOTAL".equals(lastRow.get(0))) {
-        totalDrStr  = lastRow.get(3).toString();
-        totalCrStr  = lastRow.get(4).toString();
-        closingBal  = lastRow.get(5).toString();
-        closingDir  = lastRow.get(6).toString();
-    }
-}
 
 // Ticket-wise payment summary map
 // key -> bookingId|side (BUY/SELL), value -> map of totals and payment timeline
@@ -197,7 +223,7 @@ for (int i = 0; i < payRows.size(); i++) {
     --gold:#c9922a;--gold-d:#a87520;--bg:#eef1f7;--card:#ffffff;
     --border:#d1d9e6;--border-l:#e8edf5;--text:#0f172a;--muted:#64748b;
     --inp-bg:#f8fafc;--green:#059669;--red:#dc2626;--r:8px;--r-sm:5px;
-    --shadow:0 2px 12px rgba(0,0,0,.10);
+    --shadow:0 2px 12px rgba(0,0,0,.10);--shadow-sm:0 1px 4px rgba(0,0,0,.06);
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px;background:var(--bg);color:var(--text);}
@@ -256,13 +282,60 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
 .badge-cust{background:#e3f2fd;color:#1565c0;}
 
 /* Summary chips */
-.summary-row{display:flex;gap:10px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--border);}
-.s-chip{flex:1;min-width:120px;background:var(--bg);border-radius:var(--r-sm);padding:8px 12px;text-align:center;}
-.s-chip .s-lbl{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;}
-.s-chip .s-val{font-size:16px;font-weight:700;margin-top:2px;}
-.s-chip.chip-dr .s-val{color:var(--red);}
-.s-chip.chip-cr .s-val{color:var(--green);}
-.s-chip.chip-bal .s-val{color:var(--violet);}
+.sum-row{display:flex;gap:10px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--border);}
+.sum-chip{background:var(--card);border-radius:var(--r-sm);border:1px solid var(--border-l);padding:10px 16px;display:flex;flex-direction:column;gap:8px;min-width:180px;flex:1;max-width:320px;box-shadow:var(--shadow-sm);}
+.sum-chip-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;}
+.sum-chip-body{display:flex;flex-direction:column;gap:3px;}
+.sum-chip-lbl{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;}
+.sum-chip-val{font-size:18px;font-weight:800;}
+.sum-chip.chip-advance .sum-chip-val{color:var(--green);}
+.sum-chip.chip-agent-due .sum-chip-val{color:var(--red);}
+
+/* Ledger table (new format) */
+.rpt-table{width:100%;min-width:900px;border-collapse:collapse;font-size:12.5px;}
+.tbl-wrap{overflow-x:auto;}
+.rpt-table thead tr{background:linear-gradient(135deg,var(--navy) 0%,var(--navy2) 100%);}
+.rpt-table thead th{padding:10px;color:#fff;font-weight:700;text-transform:uppercase;font-size:10.5px;letter-spacing:.4px;white-space:nowrap;text-align:left;}
+.rpt-table tbody tr{border-bottom:1px solid var(--border-l);}
+.rpt-table tbody tr.ledger-row{cursor:pointer;}
+.rpt-table tbody tr.ledger-row:hover{background:#eef2ff;}
+.rpt-table tbody td{padding:9px 10px;vertical-align:middle;}
+.rpt-table tfoot tr{background:#f1f5f9;border-top:2px solid var(--border);}
+.rpt-table tfoot td{padding:9px 10px;font-weight:800;font-size:12.5px;}
+.badge{display:inline-block;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700;}
+.badge-buy{background:#fff3e0;color:#bf6000;border:1px solid #ffe0b2;}
+.badge-sell{background:#e8f5e9;color:#1b5e20;border:1px solid #c8e6c9;}
+.badge-cust{background:#e3f2fd;color:#0d47a1;border:1px solid #bbdefb;}
+.badge-dr{background:#e8f5e9;color:#1b5e20;}
+.badge-cr{background:#fff3e0;color:#bf6000;}
+.bal-cell{font-weight:700;}
+.bal-cell.zero{color:var(--green);}
+.bal-cell.due{color:var(--red);}
+.bal-cell.credit{color:var(--green);}
+.pax-list{font-size:10px;line-height:1.5;}
+.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;}
+.detail-item{display:flex;flex-direction:column;gap:2px;}
+.detail-item.full{grid-column:1/-1;}
+.detail-lbl{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;}
+.detail-val{font-size:13px;font-weight:600;word-break:break-word;}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2000;align-items:center;justify-content:center;}
+.modal-overlay.active{display:flex;}
+.modal-box{background:#fff;border-radius:var(--r);width:360px;max-width:95vw;box-shadow:0 8px 32px rgba(0,0,0,.25);overflow:hidden;}
+.modal-box.detail-box{width:480px;max-width:96vw;}
+.modal-head{background:linear-gradient(135deg,var(--navy),var(--navy2));padding:12px 16px;display:flex;align-items:center;justify-content:space-between;}
+.modal-head-title{color:#fff;font-weight:800;font-size:13px;display:flex;align-items:center;gap:8px;}
+.modal-head-title i{color:var(--gold);}
+.modal-close{background:none;border:none;color:rgba(255,255,255,.7);font-size:18px;cursor:pointer;}
+.modal-body{padding:16px;display:flex;flex-direction:column;gap:12px;}
+.modal-foot{padding:12px 16px;display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border-l);}
+.mfg{display:flex;flex-direction:column;gap:4px;}
+.mfg label{font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;}
+.mfg input,.mfg select{height:34px;border:1.5px solid var(--border);border-radius:var(--r-sm);padding:0 10px;font-size:13px;width:100%;}
+.mfg textarea{border:1.5px solid var(--border);border-radius:var(--r-sm);padding:8px 10px;font-size:13px;width:100%;resize:vertical;min-height:72px;font-family:inherit;}
+.info-row{background:#fafafa;border-radius:var(--r-sm);padding:8px 12px;font-size:12px;}
+.info-row span{font-weight:700;}
+.bb{display:inline-flex;align-items:center;gap:6px;height:33px;padding:0 15px;border-radius:var(--r-sm);font-size:12px;font-weight:700;cursor:pointer;border:1.5px solid transparent;}
+.bb-gold{background:var(--gold);color:#fff;border-color:var(--gold);}
 
 /* Ticket-wise payment summary */
 .ticket-pay-wrap{margin-top:12px;border-top:1px solid var(--border);padding:12px 12px 0;}
@@ -287,27 +360,34 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
 /* Print styles */
 @media print {
     .tw-nav,.filter-card,.btn-print,.no-print{display:none!important;}
-    html,body{height:auto;background:#fff;font-size:11pt;}
-    .tw,.tw-body{height:auto;overflow:visible;}
-    .print-header{display:flex!important;}
-    .stmt-wrap{box-shadow:none;border-radius:0;}
-    .stmt-header{background:#1a2744!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-    .stmt-table thead th{background:#243159!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-    .stmt-table tr.row-total td{background:#1a2744!important;color:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-    .stmt-table td{padding:4px 8px;font-size:10pt;}
-    .stmt-table tr:hover td{background:transparent;}
+    html,body{height:auto;background:#fff;font-size:11px;width:100%;}
+    .tw,.tw-body{height:auto!important;overflow:visible!important;width:100%!important;}
+    .tw-body{padding:4px 6px!important;}
+    .print-header{display:flex!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    .stmt-wrap{box-shadow:none;border-radius:0;overflow:visible!important;width:100%!important;}
+    .tbl-wrap{overflow:visible!important;width:100%!important;}
+    .sum-row{display:flex!important;flex-wrap:wrap;gap:8px;padding:8px 0 10px!important;border-bottom:1px solid var(--border);}
+    .sum-chip{box-shadow:none;padding:8px 12px!important;min-width:140px;flex:1;}
+    .sum-chip-val{font-size:14pt!important;}
+    .rpt-table{min-width:unset!important;width:100%!important;font-size:8pt!important;table-layout:fixed;}
+    .rpt-table thead tr{background:#1a2744!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    .rpt-table thead th{color:#fff!important;padding:4px 3px!important;font-size:7pt!important;white-space:normal!important;word-break:break-word;line-height:1.25;}
+    .rpt-table tbody td,.rpt-table tfoot td{padding:3px 4px!important;font-size:8pt!important;white-space:normal!important;word-break:break-word;overflow:visible!important;vertical-align:top!important;line-height:1.3;}
+    .rpt-table tbody tr:hover{background:transparent!important;}
+    .rpt-table tfoot tr{background:#f1f5f9!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    .badge{font-size:7pt!important;padding:1px 4px!important;}
+    .pax-list{font-size:7.5pt!important;}
+    .bal-cell{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
 
-    /* Ticket-wise print compatibility */
-    .ticket-pay-wrap{padding:0!important;margin-top:8px!important;border-top:none!important;}
+    /* Ticket-wise print */
+    .ticket-pay-wrap{padding:0!important;margin-top:8px!important;border-top:none!important;overflow:visible!important;}
     .ticket-pay-note{font-size:9pt!important;margin-bottom:6px!important;}
-    .tp-table{width:100%!important;table-layout:fixed;font-size:8.5pt!important;}
+    .tp-table{width:100%!important;table-layout:fixed;font-size:8pt!important;}
     .tp-table th,.tp-table td{padding:3px 4px!important;white-space:normal!important;word-break:break-word;}
-
-    /* Keep print compact: hide secondary columns */
     .tp-col-pnr,.tp-col-route,.tp-col-cash,.tp-col-bank,.tp-col-last,.tp-col-entries{display:none!important;}
 
-    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    @page{size:A4 portrait;margin:10mm 8mm;}
+    *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}
+    @page{size:A4 landscape;margin:6mm 8mm;}
 }
 </style>
 </head>
@@ -362,7 +442,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
         </div>
     </div>
     <button type="submit" class="btn-search"><i class="fa-solid fa-magnifying-glass" style="margin-right:5px;"></i>View Statement</button>
-    <% if (agentId > 0 && rows.size() > 1) { %>
+    <% if (agentId > 0 && !ledgerRows.isEmpty()) { %>
     <button type="button" class="btn-print" onclick="window.print()"><i class="fa-solid fa-print"></i>Print</button>
     <% } %>
 </form>
@@ -385,15 +465,20 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
     
 
     <% if (!showTicketWise) { %>
-    <% // Count TXN rows only (excluding OPEN and TOTAL)
-       int txnCount = 0;
-       for (int i = 0; i < rows.size(); i++) {
-           Vector r = (Vector) rows.get(i);
-           if ("TXN".equals(r.get(0))) txnCount++;
-       }
-    %>
 
-    <% if (txnCount == 0) { %>
+    <!-- Summary cards -->
+    <div class="sum-row">
+      <div class="sum-chip chip-advance">
+        <div class="sum-chip-lbl">Agent Advance (We Have to Pay)</div>
+        <div class="sum-chip-val">&#8377;<%=df.format(totalAdvance)%></div>
+      </div>
+      <div class="sum-chip chip-agent-due">
+        <div class="sum-chip-lbl">Balance (Agent Has to Pay)</div>
+        <div class="sum-chip-val">&#8377;<%=df.format(totalAgentDue)%></div>
+      </div>
+    </div>
+
+    <% if (ledgerRows.isEmpty()) { %>
     <div class="empty-state">
         <i class="fa-solid fa-inbox"></i>
         <div style="font-size:14px;font-weight:600;margin-bottom:6px;">No Transactions Found</div>
@@ -401,136 +486,146 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
     </div>
     <% } else { %>
 
-    <!-- Summary chips -->
-    <div class="summary-row no-print">
-        <div class="s-chip chip-dr">
-            <div class="s-lbl">Total DR (Charged)</div>
-            <div class="s-val"><%=totalDrStr%></div>
-        </div>
-        <div class="s-chip chip-cr">
-            <div class="s-lbl">Total CR (Received)</div>
-            <div class="s-val"><%=totalCrStr%></div>
-        </div>
-        <div class="s-chip chip-bal">
-            <div class="s-lbl">Closing Balance</div>
-            <div class="s-val <%="DR".equals(closingDir)?"bal-dr":"CR".equals(closingDir)?"bal-cr":"bal-nil"%>">
-                <%=closingBal%> <span style="font-size:11px;"><%="NIL".equals(closingDir)?"":closingDir%></span>
-            </div>
-        </div>
-        <div class="s-chip">
-            <div class="s-lbl">Transactions</div>
-            <div class="s-val" style="color:var(--navy);"><%=txnCount%></div>
-        </div>
-    </div>
-
-    <!-- Table -->
-    <div style="overflow-x:auto;">
-    <table class="stmt-table">
+    <div class="tbl-wrap">
+    <table class="rpt-table">
         <thead>
-            <tr>
-                <th style="width:88px;">Date</th>
-                <th style="width:90px;">Vou.Number</th>
-                <th>Particulars</th>
-                <th class="num" style="width:110px;">Dr.Amount</th>
-                <th class="num" style="width:110px;">Cr.Amount</th>
-                <th class="num" style="width:130px;">Balance</th>
-            </tr>
+          <tr>
+            <th>#</th>
+            <th>Date</th>
+            <th>Ticket / PNR</th>
+            <th>Passengers</th>
+            <th>Party</th>
+            <th>Type</th>
+            <th>DR/CR</th>
+            <th>Bill Amt</th>
+            <th>Paid Amt</th>
+            <th>Mode</th>
+            <th>Txn No</th>
+            <th>Balance</th>
+          </tr>
         </thead>
         <tbody>
         <%
-        for (int i = 0; i < rows.size(); i++) {
-            Vector r = (Vector) rows.get(i);
-            String rowType   = r.get(0) != null ? r.get(0).toString() : "";
-            String txnDate   = r.get(1) != null ? r.get(1).toString() : "";
-            String vouNo     = r.get(2) != null ? r.get(2).toString() : "";
-            String drAmt     = r.get(3) != null ? r.get(3).toString() : "";
-            String crAmt     = r.get(4) != null ? r.get(4).toString() : "";
-            String balance   = r.get(5) != null ? r.get(5).toString() : "";
-            String balDir    = r.get(6) != null ? r.get(6).toString() : "";
-            String partMain  = r.get(7) != null ? r.get(7).toString() : "";
-            String route     = r.get(8) != null ? r.get(8).toString() : "";
-            String flightInf = r.get(9) != null ? r.get(9).toString() : "";
-            String extraPax  = r.get(10) != null ? r.get(10).toString() : "";
-            String pType     = r.get(12) != null ? r.get(12).toString() : "";
-            String remarks   = r.get(13) != null ? r.get(13).toString() : "";
-            String billAmt   = r.get(14) != null ? r.get(14).toString() : "";
+          int sno = 1;
+          totalBill = 0; totalPaid = 0; lastBal = 0; lastBalCls = "zero";
+          runState[0] = 0; runState[1] = 0;
+          for (int i = 0; i < ledgerRows.size(); i++) {
+            Vector r = (Vector) ledgerRows.get(i);
+            int bookingId   = r.get(0) != null ? Integer.parseInt(r.get(0).toString()) : 0;
+            String tktNo      = r.get(1) != null ? r.get(1).toString() : "-";
+            String pnr        = r.get(2) != null ? r.get(2).toString() : "-";
+            String partyType  = r.get(3) != null ? r.get(3).toString() : "";
+            String partyDisp  = r.get(4) != null ? r.get(4).toString() : "-";
+            double bill  = r.get(5) != null ? Math.abs(Double.parseDouble(r.get(5).toString())) : 0;
+            double paid  = r.get(6) != null ? Math.abs(Double.parseDouble(r.get(6).toString())) : 0;
+            String fdate = r.get(8) != null ? r.get(8).toString() : "";
+            String txnTime = r.size() > 17 && r.get(17) != null ? r.get(17).toString().trim() : "";
+            String payModeName   = r.get(11) != null ? r.get(11).toString() : "";
+            String lastTxnNo     = r.get(12) != null ? r.get(12).toString() : "";
+            String pName         = r.get(13) != null ? r.get(13).toString() : "";
+            String txnType       = r.get(14) != null ? r.get(14).toString() : "";
+            String remarks       = r.size() > 15 && r.get(15) != null ? r.get(15).toString() : "";
+            String chargeType    = r.size() > 16 && r.get(16) != null ? r.get(16).toString() : "";
+            String ledgerId      = r.size() > 18 && r.get(18) != null ? r.get(18).toString() : "";
+            String remarksAttr   = remarks.replace("&","&amp;").replace("\"","&quot;").replace("<","&lt;").replace("'","&#39;");
+            String pNameAttr     = pName.replace("&","&amp;").replace("\"","&quot;").replace("<","&lt;").replace("'","&#39;");
+            String partyDispAttr = partyDisp.replace("&","&amp;").replace("\"","&quot;").replace("<","&lt;").replace("'","&#39;");
 
-            String balCls = "DR".equals(balDir) ? "bal-dr" : "CR".equals(balDir) ? "bal-cr" : "bal-nil";
-            String balDisplay = "NIL".equals(balDir) ? "0.00" : balance + " " + balDir;
+            String ptBadge = "badge-cust", ptLabel = partyType;
+            if ("BUY_AGENT".equals(partyType))       { ptBadge = "badge-buy";  ptLabel = "Buy Agent"; }
+            else if ("SELL_AGENT".equals(partyType)) { ptBadge = "badge-sell"; ptLabel = "Sell Agent"; }
+            else if ("AGENT_ACCOUNT".equals(partyType)) { ptBadge = "badge-sell"; ptLabel = "Agent Account"; }
+            else if ("CUSTOMER".equals(partyType))   { ptBadge = "badge-cust"; ptLabel = "Customer"; }
 
-            if ("OPEN".equals(rowType)) {
+            String typeLabel = chargeType;
+            if ("BALANCE_PAY".equals(chargeType)) typeLabel = "Pay Balance";
+            else if ("ADVANCE_PAID".equals(chargeType)) typeLabel = "Advance Paid";
+            else if ("BALANCE_COLLECT".equals(chargeType)) typeLabel = "Balance Collect";
+            else if ("ADVANCE_COLLECT".equals(chargeType)) typeLabel = "Advance Collect";
+            else if ("ADVANCE_CREDIT".equals(chargeType)) typeLabel = "Advance Credit";
+            else if ("ORIGINAL".equals(chargeType) || chargeType.isEmpty()) typeLabel = "Ticket";
+            else if (chargeType.length() > 0) typeLabel = chargeType.replace('_', ' ');
+
+            String txnBadge = "DR".equals(txnType) ? "badge-dr" : "badge-cr";
+            if (bill > 0.005) totalBill += bill;
+            totalPaid += paid;
+            applyLedgerRunningRow(partyType, chargeType, txnType, bill, paid, runState);
+            double bal = runningBalanceAmount(runState[0], runState[1]);
+            String balCls = runningBalanceClass(runState[0], runState[1]);
+            lastBal = bal; lastBalCls = balCls;
+            String ptLabelAttr = ptLabel.replace("&","&amp;").replace("\"","&quot;").replace("<","&lt;").replace("'","&#39;");
+            String typeLabelAttr = typeLabel.replace("&","&amp;").replace("\"","&quot;").replace("<","&lt;").replace("'","&#39;");
+            String tktNoAttr = tktNo.replace("&","&amp;").replace("\"","&quot;").replace("<","&lt;").replace("'","&#39;");
+            String pnrAttr = pnr.replace("&","&amp;").replace("\"","&quot;").replace("<","&lt;").replace("'","&#39;");
+            String modeAttr = payModeName.replace("&","&amp;").replace("\"","&quot;").replace("<","&lt;").replace("'","&#39;");
+            String txnNoAttr = lastTxnNo.replace("&","&amp;").replace("\"","&quot;").replace("<","&lt;").replace("'","&#39;");
         %>
-        <tr class="row-open">
-            <td style="color:var(--muted);font-size:11px;">b/f</td>
-            <td style="color:var(--muted);font-size:11px;">Opening Balance</td>
-            <td></td>
-            <td class="num dr-amt"><%=drAmt.isEmpty()?"":drAmt%></td>
-            <td class="num cr-amt"><%=crAmt.isEmpty()?"":crAmt%></td>
-            <td class="num <%=balCls%>"><%=balDisplay%></td>
-        </tr>
-        <%
-            } else if ("TOTAL".equals(rowType)) {
-        %>
-        <tr class="row-total">
-            <td colspan="3" style="text-align:right;letter-spacing:.5px;">TOTAL</td>
-            <td class="num"><%=drAmt%></td>
-            <td class="num"><%=crAmt%></td>
-            <td class="num <%=balCls%>" style="color:#fff;"><%=balDisplay%></td>
-        </tr>
-        <%
-            } else {
-                // Determine party badge
-                String badgeCls = "", badgeLbl = "";
-                if ("BUY_AGENT".equals(pType))   { badgeCls="badge-buy";  badgeLbl="Buy";  }
-                else if ("SELL_AGENT".equals(pType)) { badgeCls="badge-sell"; badgeLbl="Sell"; }
-                else if ("CUSTOMER".equals(pType))   { badgeCls="badge-cust"; badgeLbl="Cust"; }
-        %>
-        <tr style="cursor:pointer;" onclick="showRemarkModal(<%=i%>)"
-            data-vou="<%=vouNo.replace("\"","&quot;")%>"
-            data-date="<%=txnDate%>"
-            data-part="<%=partMain.replace("\"","&quot;").replace("'","&#39;")%>"
-            data-flight="<%=flightInf.replace("\"","&quot;")%>"
-            data-route="<%=route%>"
-            data-bill="<%=billAmt%>"
-            data-remark="<%=remarks.replace("\"","&quot;").replace("'","&#39;")%>">
-            <td style="white-space:nowrap;color:var(--muted);"><%=txnDate%></td>
-            <td style="white-space:nowrap;font-size:11px;">
-                <%=vouNo%>
-                <% if (!badgeLbl.isEmpty()) { %><span class="badge-party <%=badgeCls%>"><%=badgeLbl%></span><% } %>
+          <tr class="ledger-row"
+              onclick="openLedgerDetail(this)"
+              data-ledger-id="<%=ledgerId%>"
+              data-booking-id="<%=bookingId%>"
+              data-date="<%=fdate%>"
+              data-time="<%=txnTime%>"
+              data-ticket="<%=tktNoAttr%>"
+              data-pnr="<%=pnrAttr%>"
+              data-passengers="<%=pNameAttr%>"
+              data-party="<%=partyDispAttr%>"
+              data-party-type="<%=partyType%>"
+              data-party-label="<%=ptLabelAttr%>"
+              data-type="<%=typeLabelAttr%>"
+              data-txn-type="<%=txnType%>"
+              data-bill="<%=df.format(bill)%>"
+              data-paid="<%=df.format(paid)%>"
+              data-mode="<%=modeAttr%>"
+              data-txn-no="<%=txnNoAttr%>"
+              data-remarks="<%=remarksAttr%>"
+              data-run-bal="<%=df.format(bal)%>"
+              data-run-bal-cls="<%=balCls%>">
+            <td style="color:var(--muted);"><%=sno++%></td>
+            <td style="white-space:nowrap;">
+              <div><%=fdate%></div>
+              <% if (!txnTime.isEmpty()) { %><div style="font-size:10px;color:var(--muted);margin-top:2px;"><%=txnTime%></div><% } %>
             </td>
             <td>
-                <div class="particulars-main"><%=partMain%></div>
-                <% if (!flightInf.isEmpty()) { %><div class="particulars-sub"><%=flightInf%></div><% } %>
-                <% if (!route.isEmpty()) { %><div class="particulars-route"><%=route%></div><% } %>
+              <div style="font-weight:700;color:var(--gold);"><%=tktNo%></div>
+              <div style="font-size:11px;color:var(--muted);"><%=pnr%></div>
             </td>
-            <td class="num dr-amt"><%=drAmt.isEmpty()?"":drAmt%></td>
-            <td class="num cr-amt"><%=crAmt.isEmpty()?"":crAmt%></td>
-            <td class="num <%=balCls%>"><%=balDisplay%></td>
-        </tr>
-        <%
-                // Extra passengers as sub-rows
-                if (!extraPax.isEmpty()) {
-                    String[] paxList = extraPax.split("\\|\\|");
-                    for (int p = 0; p < paxList.length; p++) {
-                        String paxName = paxList[p].trim();
-                        if (paxName.isEmpty()) continue;
-        %>
-        <tr class="row-pax">
-            <td></td>
-            <td class="pax-label">pax-<%=(p+2)%></td>
-            <td><div class="particulars-main" style="font-size:11px;"><%=paxName%></div></td>
-            <td></td><td></td><td></td>
-        </tr>
-        <%
-                    }
-                }
-            } // end TXN row
-        } // end for
-        %>
+            <td>
+              <div class="pax-list">
+              <% String[] paxArr = pName.isEmpty() ? new String[0] : pName.split(",");
+                 for (int pi = 0; pi < paxArr.length; pi++) {
+                   String pax = paxArr[pi].trim();
+                   if (!pax.isEmpty()) { %>
+              <div><i class="fa-solid fa-user" style="font-size:9px;color:var(--muted);margin-right:3px;"></i><%=pax%></div>
+              <% }} if (paxArr.length == 0) { %><span style="color:var(--muted);">—</span><% } %>
+              </div>
+            </td>
+            <td>
+              <span class="badge <%=ptBadge%>"><%=ptLabel%></span>
+              <div style="font-size:12px;margin-top:3px;font-weight:600;"><%=partyDisp%></div>
+            </td>
+            <td><%=typeLabel%></td>
+            <td><span class="badge <%=txnBadge%>"><%=txnType%></span></td>
+            <td style="font-weight:600;">&#8377;<%=df.format(bill)%></td>
+            <td style="color:var(--green);font-weight:600;">&#8377;<%=df.format(paid)%></td>
+            <td style="font-size:11px;"><%=payModeName.isEmpty() ? "-" : payModeName%></td>
+            <td style="font-size:11px;color:var(--violet);font-weight:600;"><%=lastTxnNo.isEmpty() ? "—" : lastTxnNo%></td>
+            <td class="bal-cell <%=balCls%>">&#8377;<%=df.format(Math.abs(bal))%></td>
+          </tr>
+        <% } %>
         </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="7" style="color:var(--muted);">TOTALS</td>
+            <td>&#8377;<%=df.format(totalBill)%></td>
+            <td style="color:var(--green);">&#8377;<%=df.format(totalPaid)%></td>
+            <td></td><td></td>
+            <td class="bal-cell <%=lastBalCls%>">&#8377;<%=df.format(Math.abs(lastBal))%></td>
+          </tr>
+        </tfoot>
     </table>
     </div>
-    <% } // end txnCount > 0 %>
+    <% } %>
     <% } // end !showTicketWise %>
 
         <% if (showTicketWise && ticketPayMap.size() > 0) { %>
@@ -611,38 +706,74 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
 </div><!-- tw-body -->
 </div><!-- tw -->
 
+<!-- Ledger detail modal -->
+<div class="modal-overlay" id="ledgerDetailModal">
+  <div class="modal-box detail-box">
+    <div class="modal-head">
+      <div class="modal-head-title"><i class="fa-solid fa-receipt"></i> Ledger Details</div>
+      <button class="modal-close" onclick="closeLedgerDetail()">&times;</button>
+    </div>
+    <div class="modal-body" id="ledgerDetailBody"></div>
+    <div class="modal-foot">
+      <button class="bb bb-gold" onclick="closeLedgerDetail()">Close</button>
+    </div>
+  </div>
+</div>
+
 <script>
-function showRemarkModal(idx) {
-    var row = document.querySelector('tr[onclick="showRemarkModal(' + idx + ')"]');
-    if (!row) return;
-    var vou     = row.dataset.vou     || '';
-    var date    = row.dataset.date    || '';
-    var part    = row.dataset.part    || '';
-    var flight  = row.dataset.flight  || '';
-    var route   = row.dataset.route   || '';
-    var bill    = row.dataset.bill    || '';
-    var remark  = row.dataset.remark  || '';
+function openLedgerDetail(row) {
+  if (!row || !row.dataset) return;
+  const d = row.dataset;
+  const balCls = d.runBalCls || 'zero';
+  const balColor = balCls === 'due' ? 'var(--red)' : 'var(--green)';
+  const dateTime = d.date + (d.time ? ' &nbsp;' + d.time : '');
 
-    var html = '<table style="width:100%;border-collapse:collapse;font-size:13px;text-align:left;">';
-    if (vou)    html += '<tr><td style="padding:4px 8px;color:#64748b;width:40%">Voucher</td><td style="padding:4px 8px;font-weight:600;">' + vou + '</td></tr>';
-    if (date)   html += '<tr><td style="padding:4px 8px;color:#64748b;">Date</td><td style="padding:4px 8px;">' + date + '</td></tr>';
-    if (part)   html += '<tr><td style="padding:4px 8px;color:#64748b;">Particulars</td><td style="padding:4px 8px;">' + part + '</td></tr>';
-    if (route)  html += '<tr><td style="padding:4px 8px;color:#5c4d8a;font-weight:600;">Route</td><td style="padding:4px 8px;color:#5c4d8a;font-weight:600;">' + route + '</td></tr>';
-    if (flight) html += '<tr><td style="padding:4px 8px;color:#64748b;">Flight Info</td><td style="padding:4px 8px;">' + flight + '</td></tr>';
-    if (bill)   html += '<tr><td style="padding:4px 8px;color:#64748b;">Bill Amount</td><td style="padding:4px 8px;font-weight:700;color:#b45309;">&#8377; ' + bill + '</td></tr>';
-    html += '<tr><td style="padding:8px 8px 4px;color:#64748b;vertical-align:top;">Remarks</td><td style="padding:8px 8px 4px;">';
-    html += remark ? ('<span style="font-weight:600;color:#0f172a;">' + remark + '</span>') : '<span style="color:#94a3b8;font-style:italic;">No remarks</span>';
-    html += '</td></tr></table>';
+  document.getElementById('ledgerDetailBody').innerHTML =
+    '<div class="detail-grid">' +
+      detailItem('Ledger ID', d.ledgerId || '—') +
+      detailItem('Date &amp; Time', dateTime) +
+      detailItem('Ticket No', d.ticket || '—') +
+      detailItem('PNR', d.pnr || '—') +
+      detailItem('Booking ID', d.bookingId && d.bookingId !== '0' ? d.bookingId : '—') +
+      detailItem('Party Type', d.partyLabel || d.partyType || '—') +
+      detailItem('Agent / Party', d.party || '—') +
+      detailItem('Entry Type', d.type || '—') +
+      detailItem('DR / CR', d.txnType || '—') +
+      detailItem('Bill Amount', '&#8377;' + (d.bill || '0.00'), 'amt') +
+      detailItem('Paid Amount', '&#8377;' + (d.paid || '0.00'), 'amt-green') +
+      detailItem('Payment Mode', d.mode || '—') +
+      detailItem('Transaction No', d.txnNo || '—') +
+      detailItem('Running Balance', '&#8377;' + (d.runBal || '0.00'), null, balColor) +
+      detailItem('Passengers', d.passengers || '—', 'full') +
+      detailItem('Remarks', d.remarks || '—', 'full') +
+    '</div>';
 
-    Swal.fire({
-        title: 'Transaction Detail',
-        html: html,
-        icon: null,
-        confirmButtonText: 'Close',
-        confirmButtonColor: '#1a2744',
-        width: 420
-    });
+  document.getElementById('ledgerDetailModal').classList.add('active');
 }
+
+function detailItem(label, value, cls, color) {
+  let valCls = 'detail-val';
+  if (cls === 'amt-green') valCls += ' amt-green';
+  const style = color ? ' style="color:' + color + ';"' : (cls === 'amt-green' ? ' style="color:var(--green);"' : '');
+  const colCls = cls === 'full' ? ' detail-item full' : ' detail-item';
+  return '<div class="' + colCls.trim() + '"><div class="detail-lbl">' + label + '</div><div class="' + valCls + '"' + style + '>' + (value || '—') + '</div></div>';
+}
+
+function closeLedgerDetail() {
+  document.getElementById('ledgerDetailModal').classList.remove('active');
+}
+
+document.getElementById('ledgerDetailModal').addEventListener('click', function(e) {
+  if (e.target === this) closeLedgerDetail();
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+  if (window.innerWidth > 768) {
+    var sb = document.getElementById('sidebar');
+    if (sb) sb.classList.add('hidden');
+    document.body.classList.add('sidebar-hidden');
+  }
+});
 </script>
 </body>
 </html>

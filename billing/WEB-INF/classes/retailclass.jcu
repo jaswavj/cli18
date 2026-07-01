@@ -39,7 +39,7 @@
 			<path>billing\billingBean.java</path>
 			<source>true</source>
 			<index>0</index>
-			<active>true</active>
+			<active>false</active>
 		</docitem>
 		<docitem>
 			<path>product\productBean.java</path>
