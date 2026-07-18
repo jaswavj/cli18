@@ -1,43 +1,5 @@
 <%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8"%>
 <%@ page import="java.util.*,java.text.SimpleDateFormat,java.text.DecimalFormat"%>
-<%!
-/** state[0]=due (agent owes), state[1]=advance (we owe agent) */
-private void applyLedgerRunningRow(String partyType, String chargeType, String txnType,
-        double bill, double paid, double[] state) {
-    if ("BALANCE_COLLECT".equals(chargeType)) {
-        double amt = paid;
-        double c = Math.min(amt, state[0]); state[0] -= c; amt -= c;
-        c = Math.min(amt, state[1]); state[1] -= c; amt -= c;
-        if (amt > 0.005) state[1] += amt;
-    } else if ("BALANCE_PAY".equals(chargeType)) {
-        double amt = paid;
-        double p = Math.min(amt, state[1]); state[1] -= p; amt -= p;
-        if (amt > 0.005) state[0] += amt;
-    } else if ("ADVANCE_COLLECT".equals(chargeType)) {
-        state[1] -= Math.min(paid, state[1]);
-    } else if ("ADVANCE_PAID".equals(chargeType)) {
-        state[0] += paid;
-    } else if ("ADVANCE_CREDIT".equals(chargeType)) {
-        state[1] += paid;
-    } else if (bill > 0.005) {
-        double unpaid = Math.max(0, bill - paid);
-        if ("DR".equals(txnType) || "SELL_AGENT".equals(partyType)) state[0] += unpaid;
-        else if ("CR".equals(txnType) || "BUY_AGENT".equals(partyType)) state[1] += unpaid;
-    }
-}
-
-private String runningBalanceClass(double runDue, double runAdvance) {
-    if (runDue > 0.005) return "due";
-    if (runAdvance > 0.005) return "credit";
-    return "zero";
-}
-
-private double runningBalanceAmount(double runDue, double runAdvance) {
-    if (runDue > 0.005) return runDue;
-    if (runAdvance > 0.005) return runAdvance;
-    return 0;
-}
-%>
 <jsp:useBean id="billing" class="billing.billingBean" />
 <jsp:useBean id="userb" class="user.userBean" />
 <%
@@ -52,29 +14,17 @@ String today    = sdf.format(new java.util.Date());
 String fromDate = request.getParameter("fromDate");
 String toDate   = request.getParameter("toDate");
 String agentIdP  = request.getParameter("agentFilter");
+String txnFilter = request.getParameter("txnFilter");
 if (fromDate  == null || fromDate.isEmpty())  fromDate  = today;
 if (toDate    == null || toDate.isEmpty())    toDate    = today;
+if (txnFilter == null || txnFilter.isEmpty()) txnFilter = "";
 int agentFilterId = 0;
 try { if (agentIdP != null && !agentIdP.isEmpty()) agentFilterId = Integer.parseInt(agentIdP); } catch (Exception e) {}
+boolean allowMultiSelect = ("CR".equals(txnFilter) || "DR".equals(txnFilter)) && agentFilterId > 0;
 
 Vector agents   = billing.getTicketAgents();
 Vector payModes = billing.getTicketPaymentModes();
 Vector allRows  = billing.getTicketLedgerReport(fromDate, toDate, agentFilterId);
-Vector rows = allRows;
-Vector agentAcctTotals = billing.getAgentAccountTotals(agentFilterId);
-double totalAdvance = agentAcctTotals.size() > 0 ? Double.parseDouble(agentAcctTotals.get(0).toString()) : 0;
-double totalAgentDue = agentAcctTotals.size() > 1 ? Double.parseDouble(agentAcctTotals.get(1).toString()) : 0;
-String selectedAgentName = "";
-if (agentFilterId > 0) {
-    for (int _ai = 0; _ai < agents.size(); _ai++) {
-        Vector _ag = (Vector) agents.get(_ai);
-        if (Integer.parseInt(_ag.get(0).toString()) == agentFilterId) {
-            selectedAgentName = _ag.get(1).toString();
-            break;
-        }
-    }
-}
-boolean agentSelected = agentFilterId > 0;
 Vector companyDet = userb.getCompanyDetails();
 String companyName = (companyDet.size() > 1 && companyDet.get(1) != null) ? companyDet.get(1).toString() : "";
 String companyAddr = (companyDet.size() > 2 && companyDet.get(2) != null) ? companyDet.get(2).toString() : "";
@@ -83,12 +33,50 @@ java.text.SimpleDateFormat iFmt  = new java.text.SimpleDateFormat("yyyy-MM-dd");
 String fromDisp = fromDate, toDisp = toDate;
 try { fromDisp = dpFmt.format(iFmt.parse(fromDate)); } catch (Exception e) {}
 try { toDisp   = dpFmt.format(iFmt.parse(toDate));   } catch (Exception e) {}
+Vector rows = new Vector();
+for (int _fi = 0; _fi < allRows.size(); _fi++) {
+    Vector _fr = (Vector) allRows.get(_fi);
+    String chargeType = _fr.size() > 16 && _fr.get(16) != null ? _fr.get(16).toString() : "";
+    boolean isCancelledBk = _fr.size() > 20 && "1".equals(String.valueOf(_fr.get(20)));
+
+    if ("CANCEL_CHARGE".equals(chargeType)) {
+        rows.add(_fr);
+        continue;
+    }
+    if (isCancelledBk) continue;
+
+    String rowTxnType = _fr.get(14) != null ? _fr.get(14).toString() : "DR";
+    double bill = _fr.get(5) != null ? Math.abs(Double.parseDouble(_fr.get(5).toString())) : 0;
+    double paid = _fr.get(6) != null ? Math.abs(Double.parseDouble(_fr.get(6).toString())) : 0;
+    double unsettled = Math.max(0, bill - paid);
+    if (unsettled <= 0.005) continue;
+    if (txnFilter.isEmpty() || txnFilter.equals(rowTxnType)) rows.add(_fr);
+}
 
 DecimalFormat df = new DecimalFormat("0.00");
+int tableColCount = allowMultiSelect ? 14 : 13;
 
-double totalBill = 0, totalPaid = 0, lastBal = 0;
-String lastBalCls = "zero";
-double[] runState = new double[]{0, 0};
+// Totals
+double totalBill = 0, totalPaid = 0, totalBal = 0;
+for (int i = 0; i < rows.size(); i++) {
+    Vector r = (Vector) rows.get(i);
+    String chargeType = r.size() > 16 && r.get(16) != null ? r.get(16).toString() : "";
+    if ("CANCEL_CHARGE".equals(chargeType)) {
+        double cancelChg = r.get(19) != null ? Math.abs(Double.parseDouble(r.get(19).toString())) : 0;
+        double refundAmt = r.get(5) != null ? Math.abs(Double.parseDouble(r.get(5).toString())) : 0;
+        int bookingId = r.get(0) != null ? Integer.parseInt(r.get(0).toString()) : 0;
+        String partyType = r.get(3) != null ? r.get(3).toString() : "";
+        double pending = billing.getBookingCancelPendingBalance(bookingId, partyType);
+        totalBill += cancelChg;
+        totalPaid += refundAmt;
+        totalBal += Math.abs(pending);
+    } else {
+        double bill = r.get(5) != null ? Math.abs(Double.parseDouble(r.get(5).toString())) : 0;
+        double paid = r.get(6) != null ? Math.abs(Double.parseDouble(r.get(6).toString())) : 0;
+        totalBill += bill; totalPaid += paid;
+        totalBal += Math.max(0, bill - paid);
+    }
+}
 %>
 <!DOCTYPE html>
 <html lang="en">
@@ -133,18 +121,12 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
 
 /* Summary chips */
 .sum-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;}
-.sum-chip{background:var(--card);border-radius:var(--r-sm);border:1px solid var(--border-l);padding:10px 16px;display:flex;flex-direction:column;gap:8px;min-width:180px;flex:1;max-width:320px;box-shadow:var(--shadow-sm);}
-.sum-chip-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;}
-.sum-chip-body{display:flex;flex-direction:column;gap:3px;}
+.sum-chip{background:var(--card);border-radius:var(--r-sm);border:1px solid var(--border-l);padding:10px 16px;display:flex;flex-direction:column;gap:3px;min-width:120px;box-shadow:var(--shadow-sm);}
 .sum-chip-lbl{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;}
 .sum-chip-val{font-size:18px;font-weight:800;}
-.sum-chip.chip-advance .sum-chip-val{color:var(--green);}
-.sum-chip.chip-agent-due .sum-chip-val{color:var(--red);}
-.btn-chip{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:var(--r-sm);font-size:11px;font-weight:700;cursor:pointer;border:none;transition:background .15s;white-space:nowrap;flex-shrink:0;}
-.btn-chip-pay{background:var(--green);color:#fff;}
-.btn-chip-pay:hover{background:#047857;}
-.btn-chip-collect{background:var(--red);color:#fff;}
-.btn-chip-collect:hover{background:#b91c1c;}
+.sum-chip.chip-bill .sum-chip-val{color:var(--navy);}
+.sum-chip.chip-paid .sum-chip-val{color:var(--green);}
+.sum-chip.chip-bal  .sum-chip-val{color:var(--red);}
 
 /* Table */
 .tbl-wrap{background:var(--card);border-radius:var(--r);border:1px solid var(--border-l);box-shadow:var(--shadow-sm);overflow-x:auto;}
@@ -152,16 +134,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
 .rpt-table thead tr{background:linear-gradient(135deg,var(--navy) 0%,var(--navy2) 100%);}
 .rpt-table thead th{padding:10px 10px;color:#fff;font-weight:700;text-transform:uppercase;font-size:10.5px;letter-spacing:.4px;white-space:nowrap;text-align:left;}
 .rpt-table tbody tr{border-bottom:1px solid var(--border-l);transition:background .1s;}
-.rpt-table tbody tr.ledger-row{cursor:pointer;}
-.rpt-table tbody tr.ledger-row:hover{background:#eef2ff;}
-.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;}
-.detail-item{display:flex;flex-direction:column;gap:2px;}
-.detail-item.full{grid-column:1/-1;}
-.detail-lbl{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;}
-.detail-val{font-size:13px;font-weight:600;color:var(--text);word-break:break-word;}
-.detail-val.amt-green{color:var(--green);}
-.detail-val.amt-red{color:var(--red);}
-.modal-box.detail-box{width:480px;max-width:96vw;}
+.rpt-table tbody tr:hover{background:#f7f8fc;}
 .rpt-table tbody td{padding:9px 10px;vertical-align:middle;}
 .rpt-table tbody tr:last-child{border-bottom:none;}
 .rpt-table tfoot tr{background:#f1f5f9;border-top:2px solid var(--border);}
@@ -174,10 +147,14 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
 .badge-cust{background:#e3f2fd;color:#0d47a1;border:1px solid #bbdefb;}
 .badge-dr{background:#e8f5e9;color:#1b5e20;}
 .badge-cr{background:#fff3e0;color:#bf6000;}
+.badge-cancel{background:#fee2e2;color:#991b1b;border:1px solid #fecaca;}
+.row-cancel td{background:#fff5f5;}
+.type-sub{font-size:10px;color:var(--muted);margin-top:3px;line-height:1.35;}
 .bal-cell{font-weight:700;}
 .bal-cell.zero{color:var(--green);}
 .bal-cell.due{color:var(--red);}
-.bal-cell.credit{color:var(--green);}
+.btn-collect{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:var(--r-sm);font-size:11px;font-weight:700;cursor:pointer;background:#dc2626;color:#fff;border:none;transition:background .15s;}
+.btn-collect:hover{background:#b91c1c;}
 .bb-print{background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.35);}
 .bb-print:hover{background:rgba(255,255,255,.25);}
 .pax-list{font-size:10px;line-height:1.5;color:var(--text);}
@@ -188,6 +165,9 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
 .rpt-table .col-party{min-width:110px;}
 .rpt-table .col-amt{white-space:nowrap;min-width:80px;}
 .rpt-table .col-bal{white-space:nowrap;min-width:80px;}
+.rpt-table .col-sel{width:34px;min-width:34px;text-align:center;}
+.row-sel{width:15px;height:15px;cursor:pointer;accent-color:var(--gold);}
+.row-selected{background:#fff9ec !important;}
 .print-header{display:none;}
 @media print{
   .tw-nav,.rpt-hdr,.sum-row,.no-print{display:none!important;}
@@ -221,11 +201,15 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
 .modal-foot{padding:12px 16px;display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border-l);}
 .info-row{background:#fafafa;border-radius:var(--r-sm);padding:8px 12px;font-size:12px;color:var(--text);}
 .info-row span{font-weight:700;}
+.bulk-bar{display:none;align-items:center;justify-content:space-between;gap:10px;background:#fff8ea;border:1px solid #f4e2bf;border-radius:var(--r-sm);padding:8px 10px;margin-bottom:10px;}
+.bulk-bar.active{display:flex;}
+.bulk-info{font-size:12px;color:var(--text);}
+.bulk-info span{font-weight:800;color:var(--navy);}
 .mfg textarea{border:1.5px solid var(--border);border-radius:var(--r-sm);padding:8px 10px;font-size:13px;outline:none;width:100%;resize:vertical;min-height:72px;font-family:inherit;}
 .mfg textarea:focus{border-color:var(--violet);}
 </style>
 </head>
-<body>
+<body data-bulk-enabled="<%=allowMultiSelect ? "1" : "0"%>">
 <div class="tw">
   <div class="tw-nav"><%@ include file="/assets/navbar/navbar.jsp" %></div>
 
@@ -245,6 +229,14 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
       <div class="fg">
         <div class="fg-lbl">To Date</div>
         <input type="date" name="toDate" class="fg-inp" value="<%=toDate%>" style="width:135px;">
+      </div>
+      <div class="fg">
+        <div class="fg-lbl">Type</div>
+        <select name="txnFilter" class="fg-sel" style="width:110px;">
+          <option value=""   <%=("".equals(txnFilter)  ?"selected":"")%>>CR &amp; DR</option>
+          <option value="CR" <%=("CR".equals(txnFilter)?"selected":"")%>>CR Only</option>
+          <option value="DR" <%=("DR".equals(txnFilter)?"selected":"")%>>DR Only</option>
+        </select>
       </div>
       <div class="fg">
         <div class="fg-lbl">Agent</div>
@@ -283,39 +275,45 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
 
     <!-- Summary -->
     <div class="sum-row">
-      <div class="sum-chip chip-advance">
-        <div class="sum-chip-top">
-          <div class="sum-chip-body">
-            <div class="sum-chip-lbl">Agent Advance (We Have to Pay)</div>
-            <div class="sum-chip-val">&#8377;<%=df.format(totalAdvance)%></div>
-          </div>
-          <% if (agentSelected) { %>
-          <button type="button" class="btn-chip btn-chip-pay no-print" onclick="openAgentModal('PAY')">
-            <i class="fa-solid fa-money-bill-wave"></i> Pay
-          </button>
-          <% } %>
-        </div>
+      <div class="sum-chip chip-bill">
+        <div class="sum-chip-lbl">Total Bill</div>
+        <div class="sum-chip-val">&#8377;<%=df.format(totalBill)%></div>
       </div>
-      <div class="sum-chip chip-agent-due">
-        <div class="sum-chip-top">
-          <div class="sum-chip-body">
-            <div class="sum-chip-lbl">Balance (Agent Has to Pay)</div>
-            <div class="sum-chip-val">&#8377;<%=df.format(totalAgentDue)%></div>
-          </div>
-          <% if (agentSelected) { %>
-          <button type="button" class="btn-chip btn-chip-collect no-print" onclick="openAgentModal('COLLECT')">
-            <i class="fa-solid fa-coins"></i> Collect
-          </button>
-          <% } %>
-        </div>
+      <div class="sum-chip chip-paid">
+        <div class="sum-chip-lbl">Total Paid</div>
+        <div class="sum-chip-val">&#8377;<%=df.format(totalPaid)%></div>
+      </div>
+      <div class="sum-chip chip-bal">
+        <div class="sum-chip-lbl">Total Balance</div>
+        <div class="sum-chip-val">&#8377;<%=df.format(totalBal)%></div>
+      </div>
+      <div class="sum-chip" style="background:var(--card);">
+        <div class="sum-chip-lbl">Records</div>
+        <div class="sum-chip-val" style="color:var(--violet);"><%=rows.size()%></div>
       </div>
     </div>
+
+    <% if (allowMultiSelect && !rows.isEmpty()) { %>
+    <div class="bulk-bar" id="bulkBar">
+      <div class="bulk-info">
+        Selected: <span id="bulkSelCount">0</span> tickets &nbsp;|&nbsp;
+        Total: <span id="bulkSelAmount">&#8377;0.00</span>
+      </div>
+      <button type="button" class="bb bb-gold" id="bulkActionBtn" onclick="openBulkCollectFromSelection()" disabled>
+        <i class="fa-solid <%= "CR".equals(txnFilter) ? "fa-money-bill-wave" : "fa-coins" %>"></i>
+        <%= "CR".equals(txnFilter) ? "Pay Selected" : "Collect Selected" %>
+      </button>
+    </div>
+    <% } %>
 
     <!-- Table -->
     <div class="tbl-wrap">
       <table class="rpt-table">
         <thead>
           <tr>
+            <% if (allowMultiSelect) { %>
+            <th class="col-sel"><input type="checkbox" id="selectAllRows" class="row-sel" title="Select all"></th>
+            <% } %>
             <th>#</th>
             <th class="col-date">Date</th>
             <th class="col-tkt">Ticket / PNR</th>
@@ -328,13 +326,14 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
             <th>Mode</th>
             <th>Txn No</th>
             <th class="col-bal">Balance</th>
+            <th class="no-print">Action</th>
           </tr>
         </thead>
         <tbody>
         <%
         if (rows.isEmpty()) {
         %>
-          <tr><td colspan="12" style="text-align:center;padding:30px;color:var(--muted);">
+          <tr><td colspan="<%=tableColCount%>" style="text-align:center;padding:30px;color:var(--muted);">
             <i class="fa-solid fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;"></i>
             No ledger entries found for this period.
           </td></tr>
@@ -343,7 +342,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
           int sno = 1;
           for (int i = 0; i < rows.size(); i++) {
             Vector r = (Vector) rows.get(i);
-            int bookingId   = r.get(0) != null ? Integer.parseInt(r.get(0).toString()) : 0;
+            int    bookingId  = r.get(0) != null ? Integer.parseInt(r.get(0).toString()) : 0;
             String tktNo      = r.get(1) != null ? r.get(1).toString() : "-";
             String pnr        = r.get(2) != null ? r.get(2).toString() : "-";
             String partyType  = r.get(3) != null ? r.get(3).toString() : "";
@@ -352,70 +351,56 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
             double paid  = r.get(6) != null ? Math.abs(Double.parseDouble(r.get(6).toString())) : 0;
             String fdate = r.get(8) != null ? r.get(8).toString() : "";
             String txnTime = r.size() > 17 && r.get(17) != null ? r.get(17).toString().trim() : "";
+            String agentIdRaw    = r.get(9)  != null ? r.get(9).toString()  : "0";
             String payModeName   = r.get(11) != null ? r.get(11).toString() : "";
             String lastTxnNo     = r.get(12) != null ? r.get(12).toString() : "";
             String pName         = r.get(13) != null ? r.get(13).toString() : "";
-            String txnType       = r.get(14) != null ? r.get(14).toString() : "";
-            String remarks       = r.size() > 15 && r.get(15) != null ? r.get(15).toString() : "";
+            String txnType       = r.get(14) != null ? r.get(14).toString() : "DR";
             String chargeType    = r.size() > 16 && r.get(16) != null ? r.get(16).toString() : "";
-            String ledgerId      = r.size() > 18 && r.get(18) != null ? r.get(18).toString() : "";
-            String remarksAttr   = remarks.replace("&","&amp;").replace("\"","&quot;").replace("<","&lt;").replace("'","&#39;");
-            String pNameAttr     = pName.replace("&","&amp;").replace("\"","&quot;").replace("<","&lt;").replace("'","&#39;");
-            String partyDispAttr = partyDisp.replace("&","&amp;").replace("\"","&quot;").replace("<","&lt;").replace("'","&#39;");
+            double cancelChg     = r.size() > 19 && r.get(19) != null ? Math.abs(Double.parseDouble(r.get(19).toString())) : 0;
+            boolean isCancelRow  = "CANCEL_CHARGE".equals(chargeType);
+            String partyDispAttr = partyDisp.replace("\"", "&quot;");
+
+            double bal;
+            String typeLabel;
+            double dispBill = bill, dispPaid = paid;
+            if (isCancelRow) {
+                double pending = billing.getBookingCancelPendingBalance(bookingId, partyType);
+                bal = Math.abs(pending);
+                if (pending > 0.005) txnType = "CR";
+                else if (pending < -0.005) txnType = "DR";
+                typeLabel = "Cancelled";
+                dispBill = cancelChg;
+                dispPaid = bill;
+            } else {
+                bal = Math.max(0, bill - paid);
+                typeLabel = "Ticket";
+            }
 
             String ptBadge = "badge-cust";
             String ptLabel = partyType;
-            if ("BUY_AGENT".equals(partyType))       { ptBadge = "badge-buy";  ptLabel = "Buy Agent"; }
+            if ("BUY_AGENT".equals(partyType))  { ptBadge = "badge-buy";  ptLabel = "Buy Agent"; }
             else if ("SELL_AGENT".equals(partyType)) { ptBadge = "badge-sell"; ptLabel = "Sell Agent"; }
-            else if ("AGENT_ACCOUNT".equals(partyType)) { ptBadge = "badge-sell"; ptLabel = "Agent Account"; }
             else if ("CUSTOMER".equals(partyType))   { ptBadge = "badge-cust"; ptLabel = "Customer"; }
 
-            String typeLabel = chargeType;
-            if ("BALANCE_PAY".equals(chargeType)) typeLabel = "Pay Balance";
-            else if ("ADVANCE_PAID".equals(chargeType)) typeLabel = "Advance Paid";
-            else if ("BALANCE_COLLECT".equals(chargeType)) typeLabel = "Balance Collect";
-            else if ("ADVANCE_COLLECT".equals(chargeType)) typeLabel = "Advance Collect";
-            else if ("ADVANCE_CREDIT".equals(chargeType)) typeLabel = "Advance Credit";
-            else if ("ORIGINAL".equals(chargeType) || chargeType.isEmpty()) typeLabel = "Ticket";
-            else if (chargeType.length() > 0) typeLabel = chargeType.replace('_', ' ');
-
             String txnBadge = "DR".equals(txnType) ? "badge-dr" : "badge-cr";
-
-            if (bill > 0.005) totalBill += bill;
-            totalPaid += paid;
-            applyLedgerRunningRow(partyType, chargeType, txnType, bill, paid, runState);
-            double bal = runningBalanceAmount(runState[0], runState[1]);
-            String balCls = runningBalanceClass(runState[0], runState[1]);
-            lastBal = bal;
-            lastBalCls = balCls;
-            String ptLabelAttr = ptLabel.replace("&","&amp;").replace("\"","&quot;").replace("<","&lt;").replace("'","&#39;");
-            String typeLabelAttr = typeLabel.replace("&","&amp;").replace("\"","&quot;").replace("<","&lt;").replace("'","&#39;");
-            String tktNoAttr = tktNo.replace("&","&amp;").replace("\"","&quot;").replace("<","&lt;").replace("'","&#39;");
-            String pnrAttr = pnr.replace("&","&amp;").replace("\"","&quot;").replace("<","&lt;").replace("'","&#39;");
-            String modeAttr = payModeName.replace("&","&amp;").replace("\"","&quot;").replace("<","&lt;").replace("'","&#39;");
-            String txnNoAttr = lastTxnNo.replace("&","&amp;").replace("\"","&quot;").replace("<","&lt;").replace("'","&#39;");
+            String balCls   = bal <= 0.005 ? "zero" : "due";
+            String rowCls   = isCancelRow ? "row-cancel" : "";
         %>
-          <tr class="ledger-row no-print"
-              onclick="openLedgerDetail(this)"
-              data-ledger-id="<%=ledgerId%>"
-              data-booking-id="<%=bookingId%>"
-              data-date="<%=fdate%>"
-              data-time="<%=txnTime%>"
-              data-ticket="<%=tktNoAttr%>"
-              data-pnr="<%=pnrAttr%>"
-              data-passengers="<%=pNameAttr%>"
-              data-party="<%=partyDispAttr%>"
-              data-party-type="<%=partyType%>"
-              data-party-label="<%=ptLabelAttr%>"
-              data-type="<%=typeLabelAttr%>"
-              data-txn-type="<%=txnType%>"
-              data-bill="<%=df.format(bill)%>"
-              data-paid="<%=df.format(paid)%>"
-              data-mode="<%=modeAttr%>"
-              data-txn-no="<%=txnNoAttr%>"
-              data-remarks="<%=remarksAttr%>"
-              data-run-bal="<%=df.format(bal)%>"
-              data-run-bal-cls="<%=balCls%>">
+          <tr class="<%=rowCls%>">
+            <% if (allowMultiSelect) { %>
+            <td class="col-sel">
+              <% if (bal > 0.005) { %>
+              <input type="checkbox" class="row-sel row-select"
+                     data-booking-id="<%=bookingId%>"
+                     data-party-type="<%=partyType%>"
+                     data-agent-id="<%=agentIdRaw%>"
+                data-party-name="<%=partyDispAttr%>"
+                     data-txn-type="<%=txnType%>"
+                     data-amount="<%=df.format(bal)%>">
+              <% } %>
+            </td>
+            <% } %>
             <td style="color:var(--muted);"><%=sno++%></td>
             <td style="white-space:nowrap;">
               <div><%=fdate%></div>
@@ -443,15 +428,42 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
               <span class="badge <%=ptBadge%>"><%=ptLabel%></span>
               <div style="font-size:12px;margin-top:3px;font-weight:600;"><%=partyDisp%></div>
             </td>
-            <td><%=typeLabel%></td>
+            <td>
+              <% if (isCancelRow) { %>
+              <span class="badge badge-cancel"><i class="fa-solid fa-ban"></i> <%=typeLabel%></span>
+              <div class="type-sub">Cancel Charge: &#8377;<%=df.format(dispBill)%></div>
+              <div class="type-sub">Refund Due: &#8377;<%=df.format(dispPaid)%></div>
+              <% } else { %>
+              <%=typeLabel%>
+              <% } %>
+            </td>
             <td><span class="badge <%=txnBadge%>"><%=txnType%></span></td>
-            <td style="font-weight:600;">&#8377;<%=df.format(bill)%></td>
-            <td style="color:var(--green);font-weight:600;">&#8377;<%=df.format(paid)%></td>
+            <td style="font-weight:600;">&#8377;<%=df.format(dispBill)%></td>
+            <td style="color:var(--green);font-weight:600;">&#8377;<%=df.format(dispPaid)%></td>
             <td style="font-size:11px;color:var(--text);"><%=payModeName.isEmpty() ? "-" : payModeName%></td>
             <td style="font-size:11px;color:var(--violet);font-weight:600;">
               <%=lastTxnNo.isEmpty() ? "<span style='color:var(--muted);'>—</span>" : lastTxnNo%>
             </td>
-            <td class="bal-cell <%=balCls%>">&#8377;<%=df.format(Math.abs(bal))%></td>
+            <td class="bal-cell <%=balCls%>">
+              &#8377;<%=df.format(bal)%>
+              <% if (isCancelRow) { %><div class="type-sub">Final Balance</div><% } %>
+            </td>
+            <td class="no-print">
+              <%if (bal > 0.005) {%>
+              <button class="btn-collect"
+                data-booking-id="<%=bookingId%>"
+                data-party-type="<%=partyType%>"
+                data-agent-id="<%=agentIdRaw%>"
+                data-party-name="<%=partyDispAttr%>"
+                data-txn-type="<%=txnType%>"
+                data-max-bal="<%=df.format(bal)%>"
+                onclick="openCollectFromButton(this)">
+                <%if ("CR".equals(txnType)) {%><i class="fa-solid fa-money-bill-wave"></i> Pay<%} else {%><i class="fa-solid fa-coins"></i> Collect<%}%>
+              </button>
+              <%} else {%>
+              <span style="color:var(--green);font-size:11px;font-weight:700;"><i class="fa-solid fa-check"></i> Settled</span>
+              <%}%>
+            </td>
           </tr>
         <%
           }
@@ -460,11 +472,12 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
         </tbody>
         <tfoot>
           <tr>
-            <td colspan="7" style="color:var(--muted);">TOTALS</td>
+            <td colspan="<%=allowMultiSelect ? 8 : 7%>" style="color:var(--muted);">TOTALS</td>
             <td>&#8377;<%=df.format(totalBill)%></td>
             <td style="color:var(--green);">&#8377;<%=df.format(totalPaid)%></td>
             <td></td><td></td>
-            <td class="bal-cell <%=lastBalCls%>">&#8377;<%=df.format(lastBal)%></td>
+            <td style="color:var(--red);">&#8377;<%=df.format(totalBal)%></td>
+            <td></td>
           </tr>
         </tfoot>
       </table>
@@ -474,207 +487,269 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
   </div><!-- /tw-body -->
 </div><!-- /tw -->
 
-<!-- ── LEDGER DETAIL MODAL ── -->
-<div class="modal-overlay" id="ledgerDetailModal">
-  <div class="modal-box detail-box">
-    <div class="modal-head">
-      <div class="modal-head-title"><i class="fa-solid fa-receipt"></i> Ledger Details</div>
-      <button class="modal-close" onclick="closeLedgerDetail()">&times;</button>
-    </div>
-    <div class="modal-body" id="ledgerDetailBody"></div>
-    <div class="modal-foot">
-      <button class="bb bb-gold" onclick="closeLedgerDetail()">Close</button>
-    </div>
-  </div>
-</div>
-
-<!-- ── AGENT PAY / COLLECT MODAL ── -->
-<div class="modal-overlay" id="agentModal">
+<!-- ── COLLECT BALANCE MODAL ── -->
+<div class="modal-overlay" id="collectModal">
   <div class="modal-box">
     <div class="modal-head">
-      <div class="modal-head-title" id="agentModalTitle"><i class="fa-solid fa-money-bill-wave"></i> Pay Advance</div>
-      <button class="modal-close" onclick="closeAgentModal()">&times;</button>
+      <div class="modal-head-title"><i class="fa-solid fa-coins"></i> Collect Balance</div>
+      <button class="modal-close" onclick="closeCollect()">&times;</button>
     </div>
     <div class="modal-body">
-      <div class="info-row" id="agentModalInfo"></div>
+      <div class="info-row" id="collectInfo"></div>
       <div class="mfg">
-        <label>Date</label>
-        <input type="date" id="agentTxnDate" value="<%=today%>">
+        <label>Collection Date</label>
+        <input type="date" id="collectDate" value="<%=today%>">
       </div>
       <div class="mfg">
-        <label id="agentAmountLabel">Amount to Pay</label>
-        <input type="number" step="0.01" id="agentAmount" placeholder="0.00">
+        <label id="collectAmountLabel">Amount to Collect</label>
+        <input type="number" step="0.01" id="collectAmount" placeholder="0.00">
       </div>
       <div class="mfg">
         <label>Payment Mode</label>
-        <select id="agentMode" onchange="handleAgentModeChange()">
+        <select id="collectMode" onchange="handleCollectModeChange()">
           <option value="">— Select Mode —</option>
           <%for (int i = 0; i < payModes.size(); i++) { Vector pm = (Vector) payModes.get(i);%>
           <option value="<%=pm.get(0)%>" data-cash="<%=pm.get(1).toString().toLowerCase().contains("cash") ? "1" : "0"%>"><%=pm.get(1)%></option>
           <%}%>
         </select>
       </div>
-      <div class="mfg" id="agentTxnRow" style="display:none;">
+      <div class="mfg" id="collectTxnRow" style="display:none;">
         <label>Transaction No <span style="color:#dc2626;">*</span></label>
-        <input type="text" id="agentTxnNo" placeholder="Txn / Ref No for online payment">
+        <input type="text" id="collectTxnNo" placeholder="Txn / Ref No for online payment">
       </div>
       <div class="mfg">
         <label>Notes <span style="color:#dc2626;">*</span></label>
-        <textarea id="agentNotes" placeholder="Enter payment / collection notes"></textarea>
+        <textarea id="collectNotes" placeholder="Enter collection notes"></textarea>
       </div>
     </div>
     <div class="modal-foot">
-      <button class="bb" style="background:#f1f5f9;color:var(--text);border-color:var(--border);" onclick="closeAgentModal()">Cancel</button>
-      <button class="bb bb-gold" id="agentSubmitBtn" onclick="saveAgentTxn()"><i class="fa-solid fa-money-bill-wave"></i> Pay</button>
+      <button class="bb" style="background:#f1f5f9;color:var(--text);border-color:var(--border);" onclick="closeCollect()">Cancel</button>
+      <button class="bb bb-gold" id="collectSubmitBtn" onclick="saveCollect()"><i class="fa-solid fa-money-bill-wave"></i> Pay</button>
     </div>
   </div>
 </div>
 
 <script>
 const ctx = '<%=ctx%>';
-const agentId = <%=agentFilterId%>;
-const agentName = '<%=selectedAgentName.replace("'", "\\'")%>';
-const agentAdvance = <%=totalAdvance%>;
-const agentDue = <%=totalAgentDue%>;
-let _agentAction = 'PAY';
+const isBulkEnabled = document.body.getAttribute('data-bulk-enabled') === '1';
+let _collectMode = 'single';
+let _cBookingId='', _cPartyType='', _cAgentId='', _cPartyName='', _cTxnType='', _cMaxBal=0;
+let _bulkItems = [];
 
-function openLedgerDetail(row) {
-  if (!row || !row.dataset) return;
-  const d = row.dataset;
-  const balCls = d.runBalCls || 'zero';
-  const balColor = balCls === 'due' ? 'var(--red)' : 'var(--green)';
-  const dateTime = d.date + (d.time ? ' &nbsp;' + d.time : '');
-
-  document.getElementById('ledgerDetailBody').innerHTML =
-    '<div class="detail-grid">' +
-      detailItem('Ledger ID', d.ledgerId || '—') +
-      detailItem('Date &amp; Time', dateTime) +
-      detailItem('Ticket No', d.ticket || '—') +
-      detailItem('PNR', d.pnr || '—') +
-      detailItem('Booking ID', d.bookingId && d.bookingId !== '0' ? d.bookingId : '—') +
-      detailItem('Party Type', d.partyLabel || d.partyType || '—') +
-      detailItem('Agent / Party', d.party || '—') +
-      detailItem('Entry Type', d.type || '—') +
-      detailItem('DR / CR', d.txnType || '—') +
-      detailItem('Bill Amount', '&#8377;' + (d.bill || '0.00'), 'amt') +
-      detailItem('Paid Amount', '&#8377;' + (d.paid || '0.00'), 'amt-green') +
-      detailItem('Payment Mode', d.mode || '—') +
-      detailItem('Transaction No', d.txnNo || '—') +
-      detailItem('Running Balance', '&#8377;' + (d.runBal || '0.00'), null, balColor) +
-      detailItem('Passengers', d.passengers || '—', 'full') +
-      detailItem('Remarks', d.remarks || '—', 'full') +
-    '</div>';
-
-  document.getElementById('ledgerDetailModal').classList.add('active');
-}
-
-function detailItem(label, value, cls, color) {
-  let valCls = 'detail-val';
-  if (cls === 'amt-green') valCls += ' amt-green';
-  else if (cls === 'amt') valCls += '';
-  const style = color ? ' style="color:' + color + ';"' : (cls === 'amt-green' ? ' style="color:var(--green);"' : '');
-  const colCls = cls === 'full' ? ' detail-item full' : ' detail-item';
-  return '<div class="' + colCls.trim() + '"><div class="detail-lbl">' + label + '</div><div class="' + valCls + '"' + style + '>' + (value || '—') + '</div></div>';
-}
-
-function closeLedgerDetail() {
-  document.getElementById('ledgerDetailModal').classList.remove('active');
-}
-
-function openAgentModal(action) {
-  if (!agentId) {
-    alert('Please select a particular agent first.');
-    return;
-  }
-  _agentAction = action;
-  const isPay = action === 'PAY';
-  const titleEl = document.getElementById('agentModalTitle');
-  const infoEl = document.getElementById('agentModalInfo');
-  const amtLbl = document.getElementById('agentAmountLabel');
-  const submitBtn = document.getElementById('agentSubmitBtn');
-
-  titleEl.innerHTML = isPay
-    ? '<i class="fa-solid fa-money-bill-wave"></i> Pay Advance'
-    : '<i class="fa-solid fa-coins"></i> Collect Balance';
-  infoEl.innerHTML =
-    'Agent: <span>' + agentName + '</span>' +
-    ' &nbsp;|&nbsp; Advance: <span style="color:#dc2626;">&#8377;' + agentAdvance.toFixed(2) + '</span>' +
-    ' &nbsp;|&nbsp; Balance: <span style="color:#059669;">&#8377;' + agentDue.toFixed(2) + '</span>';
-  if (amtLbl) amtLbl.textContent = isPay ? 'Amount to Pay' : 'Amount to Collect';
-  submitBtn.innerHTML = isPay
+function setSubmitButtonForTxn(txnType) {
+  const btn = document.getElementById('collectSubmitBtn');
+  const amtLbl = document.getElementById('collectAmountLabel');
+  const isPay = txnType === 'CR';
+  btn.innerHTML = isPay
     ? '<i class="fa-solid fa-money-bill-wave"></i> Pay'
     : '<i class="fa-solid fa-coins"></i> Collect';
-
-  document.getElementById('agentAmount').value = '';
-  document.getElementById('agentMode').value = '';
-  document.getElementById('agentTxnRow').style.display = 'none';
-  document.getElementById('agentTxnNo').value = '';
-  document.getElementById('agentNotes').value = '';
-  document.getElementById('agentModal').classList.add('active');
+  if (amtLbl) amtLbl.textContent = isPay ? 'Amount to Pay' : 'Amount to Collect';
 }
 
-function closeAgentModal() {
-  document.getElementById('agentModal').classList.remove('active');
+function openCollectFromButton(btn) {
+  if (!btn) return;
+  const bookingId = parseInt(btn.getAttribute('data-booking-id') || '0', 10);
+  const partyType = btn.getAttribute('data-party-type') || '';
+  const agentId = btn.getAttribute('data-agent-id') || '0';
+  const partyName = btn.getAttribute('data-party-name') || '';
+  const txnType = btn.getAttribute('data-txn-type') || 'DR';
+  const maxBal = parseFloat(btn.getAttribute('data-max-bal') || '0');
+  openCollect(bookingId, partyType, agentId, partyName, txnType, maxBal);
 }
 
-function handleAgentModeChange() {
-  const sel = document.getElementById('agentMode');
-  const opt = sel.options[sel.selectedIndex];
-  const isOnline = sel.value && opt.getAttribute('data-cash') === '0';
-  document.getElementById('agentTxnRow').style.display = isOnline ? '' : 'none';
-  if (!isOnline) document.getElementById('agentTxnNo').value = '';
+function openCollect(bookingId, partyType, agentId, partyName, txnType, maxBal) {
+  _collectMode = 'single';
+    _cBookingId = bookingId;
+    _cPartyType = partyType;
+    _cAgentId   = agentId;
+    _cPartyName = partyName;
+    _cTxnType   = txnType;
+    _cMaxBal    = maxBal;
+
+    // Duplicate check: same booking + agent + amount already collected today?
+    fetch(ctx + '/ticketbooking/checkDuplicateLedger.jsp?bookingId=' + bookingId
+            + '&agentId=' + agentId + '&amount=' + maxBal.toFixed(2))
+    .then(r => r.json())
+    .then(d => {
+        if (d.duplicate) {
+          alert('Duplicate Entry Detected!\n\nThis amount has already been collected today for this booking.\n\nEntered by : ' + d.enteredBy + '\nDate & Time: ' + d.dateTime + '\n\nClick OK to reload the page.');
+            location.reload();
+            return;
+        }
+        _showCollectModal(partyName, maxBal, txnType, false);
+    })
+    .catch(() => {
+        // On network error, proceed to modal
+        _showCollectModal(partyName, maxBal, txnType, false);
+    });
 }
 
-function saveAgentTxn() {
-  const amt = parseFloat(document.getElementById('agentAmount').value);
-  const mode = document.getElementById('agentMode').value;
-  const date = document.getElementById('agentTxnDate').value;
-  const txnNo = document.getElementById('agentTxnNo').value.trim();
-  const notes = document.getElementById('agentNotes').value.trim();
-
-  if (!amt || amt <= 0) { alert('Enter a valid amount'); return; }
-  if (!mode) { alert('Select a payment mode'); return; }
-  if (!date) { alert('Select a date'); return; }
-  if (!notes) { alert('Enter notes'); return; }
-  const opt = document.getElementById('agentMode').options[document.getElementById('agentMode').selectedIndex];
-  if (opt.getAttribute('data-cash') === '0' && !txnNo) { alert('Enter Transaction No for online payment'); return; }
-
-  const params = new URLSearchParams();
-  params.set('agentId', agentId);
-  params.set('action', _agentAction);
-  params.set('amount', amt);
-  params.set('payModeId', mode);
-  params.set('txnDate', date);
-  params.set('txnNo', txnNo);
-  params.set('notes', notes);
-
-  fetch(ctx + '/ticketbooking/agentAccountPayCollect.jsp', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: params.toString()
-  })
-  .then(r => r.text())
-  .then(d => {
-    if (d.trim() === 'SUCCESS') {
-      closeAgentModal();
-      location.reload();
-    } else {
-      alert('Error: ' + d);
+    function openBulkCollectFromSelection() {
+      if (!isBulkEnabled) return;
+      _bulkItems = getSelectedRows();
+      if (_bulkItems.length === 0) {
+        alert('Select at least one ticket.');
+        return;
+      }
+      _collectMode = 'bulk';
+      const total = _bulkItems.reduce((sum, item) => sum + item.amount, 0);
+      const txnType = _bulkItems[0].txnType;
+      _showCollectModal(_bulkItems.length + ' tickets selected', total, txnType, true);
     }
-  })
-  .catch(err => alert('Error: ' + err.message));
+
+    function _showCollectModal(partyName, maxBal, txnType, isBulk) {
+    document.getElementById('collectInfo').innerHTML =
+        (isBulk ? 'Selected: <span>' + partyName + '</span>' : 'Party: <span>' + partyName + '</span>') +
+        ' &nbsp;|&nbsp; Balance Due: <span style="color:#dc2626;">&#8377;' + maxBal.toFixed(2) + '</span>';
+    document.getElementById('collectAmount').value = maxBal.toFixed(2);
+      document.getElementById('collectAmount').readOnly = !!isBulk;
+    document.getElementById('collectMode').value = '';
+    document.getElementById('collectTxnRow').style.display = 'none';
+    document.getElementById('collectTxnNo').value = '';
+      document.getElementById('collectNotes').value = '';
+      setSubmitButtonForTxn(txnType);
+    document.getElementById('collectModal').classList.add('active');
 }
 
-document.getElementById('agentModal').addEventListener('click', function(e) {
-  if (e.target === this) closeAgentModal();
-});
+function closeCollect() {
+    document.getElementById('collectModal').classList.remove('active');
+}
 
-document.getElementById('ledgerDetailModal').addEventListener('click', function(e) {
-  if (e.target === this) closeLedgerDetail();
+function handleCollectModeChange() {
+    const sel = document.getElementById('collectMode');
+    const opt = sel.options[sel.selectedIndex];
+    const isOnline = sel.value && opt.getAttribute('data-cash') === '0';
+    document.getElementById('collectTxnRow').style.display = isOnline ? '' : 'none';
+    if (!isOnline) document.getElementById('collectTxnNo').value = '';
+}
+
+function saveCollect() {
+    const amt  = parseFloat(document.getElementById('collectAmount').value);
+    const mode = document.getElementById('collectMode').value;
+    const date = document.getElementById('collectDate').value;
+    const txnNo = document.getElementById('collectTxnNo').value.trim();
+  const notes = document.getElementById('collectNotes').value.trim();
+    if (!amt || amt <= 0) { alert('Enter a valid amount'); return; }
+    if (!mode) { alert('Select a payment mode'); return; }
+    if (!date) { alert('Select a collection date'); return; }
+  if (!notes) { alert('Enter notes'); return; }
+    const opt = document.getElementById('collectMode').options[document.getElementById('collectMode').selectedIndex];
+    if (opt.getAttribute('data-cash') === '0' && !txnNo) { alert('Enter Transaction No for online payment'); return; }
+
+    const params = new URLSearchParams();
+    params.set('payModeId',      mode);
+    params.set('collectionDate', date);
+    params.set('txnNo',          txnNo);
+  params.set('notes',          notes);
+
+  if (_collectMode === 'bulk') {
+    const selected = getSelectedRows();
+    if (selected.length === 0) {
+      alert('Select at least one ticket.');
+      closeCollect();
+      return;
+    }
+    for (let i = 0; i < selected.length; i++) {
+      const row = selected[i];
+      params.append('bookingIds[]', row.bookingId);
+      params.append('partyTypes[]', row.partyType);
+      params.append('agentIds[]', row.agentId);
+      params.append('partyNames[]', row.partyName);
+      params.append('txnTypes[]', row.txnType);
+      params.append('amounts[]', row.amount.toFixed(2));
+    }
+  } else {
+    params.set('bookingId',      _cBookingId);
+    params.set('partyType',      _cPartyType);
+    params.set('agentId',        _cAgentId);
+    params.set('partyName',      _cPartyName);
+    params.set('txnType',        _cTxnType);
+    params.set('amount',         amt);
+  }
+
+    fetch(ctx + '/ticketbooking/collectBalance.jsp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString()
+    })
+    .then(r => r.text())
+    .then(d => {
+        if (d.trim() === 'SUCCESS') {
+            closeCollect();
+            location.reload();
+        } else {
+            alert('Error: ' + d);
+        }
+    })
+    .catch(err => alert('Error: ' + err.message));
+}
+
+  function getSelectedRows() {
+    const selected = [];
+    const checks = document.querySelectorAll('.row-select:checked');
+    checks.forEach(function(chk) {
+      const row = chk.closest('tr');
+      if (row) row.classList.add('row-selected');
+      selected.push({
+        bookingId: chk.getAttribute('data-booking-id'),
+        partyType: chk.getAttribute('data-party-type'),
+        agentId: chk.getAttribute('data-agent-id') || '0',
+        partyName: chk.getAttribute('data-party-name') || '',
+        txnType: chk.getAttribute('data-txn-type'),
+        amount: parseFloat(chk.getAttribute('data-amount') || '0')
+      });
+    });
+    document.querySelectorAll('.row-select:not(:checked)').forEach(function(chk) {
+      const row = chk.closest('tr');
+      if (row) row.classList.remove('row-selected');
+    });
+    return selected;
+  }
+
+  function refreshBulkSelectionState() {
+    if (!isBulkEnabled) return;
+    const selected = getSelectedRows();
+    const total = selected.reduce((sum, item) => sum + item.amount, 0);
+    const countElm = document.getElementById('bulkSelCount');
+    const amtElm = document.getElementById('bulkSelAmount');
+    const actionBtn = document.getElementById('bulkActionBtn');
+    const bulkBar = document.getElementById('bulkBar');
+    if (!countElm || !amtElm || !actionBtn || !bulkBar) return;
+
+    bulkBar.classList.toggle('active', selected.length > 0);
+    countElm.textContent = String(selected.length);
+    amtElm.innerHTML = '&#8377;' + total.toFixed(2);
+    actionBtn.disabled = selected.length === 0;
+  }
+
+// Close modal on overlay click
+document.getElementById('collectModal').addEventListener('click', function(e) {
+    if (e.target === this) closeCollect();
 });
 
 // Auto-collapse sidebar on page load (desktop only)
 document.addEventListener('DOMContentLoaded', function() {
+  if (isBulkEnabled) {
+      const selectAll = document.getElementById('selectAllRows');
+      const rowChecks = document.querySelectorAll('.row-select');
+      if (selectAll) {
+        selectAll.addEventListener('change', function() {
+          rowChecks.forEach(function(chk) { chk.checked = selectAll.checked; });
+          refreshBulkSelectionState();
+        });
+      }
+      rowChecks.forEach(function(chk) {
+        chk.addEventListener('change', function() {
+          if (selectAll) {
+            const allChecked = rowChecks.length > 0 && Array.from(rowChecks).every(function(c) { return c.checked; });
+            selectAll.checked = allChecked;
+          }
+          refreshBulkSelectionState();
+        });
+      });
+      refreshBulkSelectionState();
+    }
+
     if (window.innerWidth > 768) {
         var sb = document.getElementById('sidebar');
         if (sb) sb.classList.add('hidden');

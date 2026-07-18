@@ -6213,39 +6213,6 @@ public Vector getTicketAgents() throws Exception {
     }
 }
 
-/** Returns [totalAdvance, totalDue] from agent_account. agentId=0 sums all agents. */
-public Vector getAgentAccountTotals(int agentId) {
-    Vector result = new Vector();
-    result.add(0.0);
-    result.add(0.0);
-    Connection con = null;
-    PreparedStatement pt = null;
-    ResultSet rs = null;
-    try {
-        con = util.DBConnectionManager.getConnectionFromPool();
-        if (agentId > 0) {
-            pt = con.prepareStatement(
-                "SELECT COALESCE(SUM(advance),0), COALESCE(SUM(due),0) FROM agent_account WHERE agent_id = ?");
-            pt.setInt(1, agentId);
-        } else {
-            pt = con.prepareStatement(
-                "SELECT COALESCE(SUM(advance),0), COALESCE(SUM(due),0) FROM agent_account");
-        }
-        rs = pt.executeQuery();
-        if (rs.next()) {
-            result.set(0, rs.getDouble(1));
-            result.set(1, rs.getDouble(2));
-        }
-    } catch (Exception e) {
-        e.printStackTrace();
-    } finally {
-        if (rs != null) try { rs.close(); } catch (SQLException e) { ; }
-        if (pt != null) try { pt.close(); } catch (SQLException e) { ; }
-        if (con != null) try { con.close(); } catch (Exception e) {}
-    }
-    return result;
-}
-
 public Vector getTicketPaymentModes() throws Exception {
     Connection con = null;
     PreparedStatement pt = null;
@@ -6292,203 +6259,6 @@ public String getTicketNo(int id) {
         try { if (con!=null) con.close(); } catch (Exception e) {}
     }
     return String.format("TKT-%03d", id);
-}
-
-/** Ensure one agent_account row exists for the given ticket agent. */
-private void ensureAgentAccount(Connection con, int agentId) throws SQLException {
-    PreparedStatement pt = con.prepareStatement(
-        "INSERT INTO agent_account (agent_id, advance, due) " +
-        "SELECT ?, 0, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM agent_account WHERE agent_id = ?)");
-    pt.setInt(1, agentId);
-    pt.setInt(2, agentId);
-    pt.executeUpdate();
-    pt.close();
-}
-
-/**
- * Buy from agent unpaid balance: offset existing due first, then add remainder to advance.
- */
-private void updateAgentAccountBuyBalance(Connection con, int agentId, double balance) throws SQLException {
-    if (balance <= 0) return;
-    ensureAgentAccount(con, agentId);
-
-    double due = 0, advance = 0;
-    PreparedStatement pt = con.prepareStatement(
-        "SELECT COALESCE(due,0), COALESCE(advance,0) FROM agent_account WHERE agent_id = ? FOR UPDATE");
-    pt.setInt(1, agentId);
-    ResultSet rs = pt.executeQuery();
-    if (rs.next()) {
-        due = rs.getDouble(1);
-        advance = rs.getDouble(2);
-    }
-    rs.close();
-    pt.close();
-
-    double remaining = balance;
-    if (due > 0) {
-        double offset = Math.min(due, remaining);
-        due -= offset;
-        remaining -= offset;
-    }
-    advance += remaining;
-
-    pt = con.prepareStatement("UPDATE agent_account SET due = ?, advance = ? WHERE agent_id = ?");
-    pt.setDouble(1, due);
-    pt.setDouble(2, advance);
-    pt.setInt(3, agentId);
-    pt.executeUpdate();
-    pt.close();
-}
-
-/**
- * Sell to agent unpaid balance: offset existing advance first, then add remainder to due.
- */
-private void updateAgentAccountSellBalance(Connection con, int agentId, double balance) throws SQLException {
-    if (balance <= 0) return;
-    ensureAgentAccount(con, agentId);
-
-    double due = 0, advance = 0;
-    PreparedStatement pt = con.prepareStatement(
-        "SELECT COALESCE(due,0), COALESCE(advance,0) FROM agent_account WHERE agent_id = ? FOR UPDATE");
-    pt.setInt(1, agentId);
-    ResultSet rs = pt.executeQuery();
-    if (rs.next()) {
-        due = rs.getDouble(1);
-        advance = rs.getDouble(2);
-    }
-    rs.close();
-    pt.close();
-
-    double remaining = balance;
-    if (advance > 0) {
-        double offset = Math.min(advance, remaining);
-        advance -= offset;
-        remaining -= offset;
-    }
-    due += remaining;
-
-    pt = con.prepareStatement("UPDATE agent_account SET due = ?, advance = ? WHERE agent_id = ?");
-    pt.setDouble(1, due);
-    pt.setDouble(2, advance);
-    pt.setInt(3, agentId);
-    pt.executeUpdate();
-    pt.close();
-}
-
-private void insertAgentAccountLedger(Connection con, int agentId, String txnType, double amount,
-        Integer paymentModeId, String txnNo, String remarks, String chargeType,
-        String txnDate, Integer createdBy) throws SQLException {
-    PreparedStatement pt = con.prepareStatement(
-        "INSERT INTO ticket_ledger " +
-        "(booking_id, party_type, agent_id, party_name, transaction_type, bill_amount, amount, " +
-        " payment_mode_id, transaction_no, remarks, transaction_date, charge_type, created_by) " +
-        "VALUES (0, 'AGENT_ACCOUNT', ?, NULL, ?, 0, ?, ?, ?, ?, ?, ?, ?)");
-    pt.setInt(1, agentId);
-    pt.setString(2, txnType);
-    pt.setDouble(3, amount);
-    if (paymentModeId != null) pt.setInt(4, paymentModeId); else pt.setNull(4, Types.INTEGER);
-    String tnStr = (txnNo != null && !txnNo.trim().isEmpty()) ? txnNo.trim() : null;
-    if (tnStr != null) pt.setString(5, tnStr); else pt.setNull(5, Types.VARCHAR);
-    pt.setString(6, remarks);
-    pt.setString(7, txnDate);
-    pt.setString(8, chargeType);
-    if (createdBy != null) pt.setInt(9, createdBy); else pt.setNull(9, Types.INTEGER);
-    pt.executeUpdate();
-    pt.close();
-}
-
-/**
- * Agent-level pay (clear advance) or collect (clear balance/due).
- * PAY: reduces advance first; excess increases due (agent receivable from overpay).
- * COLLECT: reduces due first; excess reduces advance (advance collect).
- */
-public String saveAgentAccountPayCollect(int agentId, String action, double amount,
-        Integer paymentModeId, String txnDate, String txnNo, String notes, Integer createdBy) {
-    if (agentId <= 0) return "ERROR:Select an agent";
-    if (amount <= 0.005) return "ERROR:Enter a valid amount";
-    if (notes == null || notes.trim().isEmpty()) return "ERROR:Notes is required";
-    if (txnDate == null || txnDate.trim().isEmpty()) {
-        txnDate = new java.text.SimpleDateFormat("yyyy-MM-dd").format(new java.util.Date());
-    }
-    String notesTrim = notes.trim();
-    Connection con = null;
-    PreparedStatement pt = null;
-    ResultSet rs = null;
-    try {
-        con = util.DBConnectionManager.getConnectionFromPool();
-        con.setAutoCommit(false);
-        ensureAgentAccount(con, agentId);
-
-        pt = con.prepareStatement(
-            "SELECT COALESCE(advance,0), COALESCE(due,0) FROM agent_account WHERE agent_id = ? FOR UPDATE");
-        pt.setInt(1, agentId);
-        rs = pt.executeQuery();
-        double advance = 0, due = 0;
-        if (rs.next()) {
-            advance = rs.getDouble(1);
-            due = rs.getDouble(2);
-        }
-        rs.close(); rs = null;
-        pt.close(); pt = null;
-
-        if ("PAY".equals(action)) {
-            double payBalance = Math.min(amount, advance);
-            double excess = amount - payBalance;
-            advance -= payBalance;
-            due += excess;
-
-            if (payBalance > 0.005) {
-                insertAgentAccountLedger(con, agentId, "CR", payBalance, paymentModeId, txnNo,
-                    "Pay balance | " + notesTrim, "BALANCE_PAY", txnDate, createdBy);
-            }
-            if (excess > 0.005) {
-                insertAgentAccountLedger(con, agentId, "DR", excess, paymentModeId, txnNo,
-                    "Advance paid | " + notesTrim, "ADVANCE_PAID", txnDate, createdBy);
-            }
-        } else if ("COLLECT".equals(action)) {
-            double collectBalance = Math.min(amount, due);
-            double excess = amount - collectBalance;
-            due -= collectBalance;
-            double advanceCollect = Math.min(excess, advance);
-            advance -= advanceCollect;
-            excess -= advanceCollect;
-
-            if (collectBalance > 0.005) {
-                insertAgentAccountLedger(con, agentId, "DR", collectBalance, paymentModeId, txnNo,
-                    "Balance collection | " + notesTrim, "BALANCE_COLLECT", txnDate, createdBy);
-            }
-            if (advanceCollect > 0.005) {
-                insertAgentAccountLedger(con, agentId, "CR", advanceCollect, paymentModeId, txnNo,
-                    "Advance collect | " + notesTrim, "ADVANCE_COLLECT", txnDate, createdBy);
-            }
-            // Over-collection beyond due + existing advance → credit with agent (increase advance)
-            if (excess > 0.005) {
-                advance += excess;
-                insertAgentAccountLedger(con, agentId, "CR", excess, paymentModeId, txnNo,
-                    "Advance credit | " + notesTrim, "ADVANCE_CREDIT", txnDate, createdBy);
-            }
-        } else {
-            return "ERROR:Invalid action";
-        }
-
-        pt = con.prepareStatement("UPDATE agent_account SET advance = ?, due = ? WHERE agent_id = ?");
-        pt.setDouble(1, advance);
-        pt.setDouble(2, due);
-        pt.setInt(3, agentId);
-        pt.executeUpdate();
-        pt.close();
-
-        con.commit();
-        return "SUCCESS";
-    } catch (Exception e) {
-        if (con != null) try { con.rollback(); } catch (SQLException ex) { ; }
-        e.printStackTrace();
-        return "ERROR:" + e.getMessage();
-    } finally {
-        if (rs != null) try { rs.close(); } catch (SQLException e) { ; }
-        if (pt != null) try { pt.close(); } catch (SQLException e) { ; }
-        if (con != null) try { con.setAutoCommit(true); con.close(); } catch (Exception e) {}
-    }
 }
 
 public int saveTicketBooking(
@@ -6653,22 +6423,6 @@ public int saveTicketBooking(
             pt.setString(11, bookingDate);
             pt.executeUpdate();
             pt.close();
-        }
-
-        // ── 4b. Agent account (unpaid buy/sell balances) ───────────────────
-        if (buyAgentId != null && buyAmount != null && buyAmount > 0) {
-            double bPaid = (buyPaidAmount != null) ? buyPaidAmount : 0.0;
-            double buyBal = buyAmount - bPaid;
-            if (buyBal > 0) {
-                updateAgentAccountBuyBalance(con, buyAgentId, buyBal);
-            }
-        }
-        if (sellAgentId != null && sellAmount != null && sellAmount > 0) {
-            double sPaid = (sellPaidAmount != null) ? sellPaidAmount : 0.0;
-            double sellBal = sellAmount - sPaid;
-            if (sellBal > 0) {
-                updateAgentAccountSellBalance(con, sellAgentId, sellBal);
-            }
         }
 
         // ── 5. Autocomplete lookups (same connection / same commit) ────────
@@ -7260,10 +7014,11 @@ public void cancelTicketBooking(int bookingId, int cancelledBy, String reason,
         pt = con.prepareStatement("UPDATE ticket_booking SET is_cancelled=1 WHERE id=?");
         pt.setInt(1, bookingId); pt.executeUpdate(); pt.close();
 
-        // Fetch booking details + original bill amounts for auto-calculating refund
+        // Fetch booking details + paid amounts for refund calculation
         pt = con.prepareStatement(
             "SELECT ticket_no, pnr, buy_agent_id, sell_agent_id, customer_name," +
-            " COALESCE(buy_amount,0), COALESCE(sell_amount,0), COALESCE(customer_amount,0)" +
+            " COALESCE(buy_amount,0), COALESCE(sell_amount,0), COALESCE(customer_amount,0)," +
+            " COALESCE(buy_paid_amount,0), COALESCE(sell_paid_amount,0), COALESCE(cust_paid_amount,0)" +
             " FROM ticket_booking WHERE id=? LIMIT 1");
         pt.setInt(1, bookingId);
         ResultSet rs2 = pt.executeQuery();
@@ -7272,6 +7027,7 @@ public void cancelTicketBooking(int bookingId, int cancelledBy, String reason,
         int origSellAgentId = 0; boolean hasSellAgent = false;
         String origCustName = "";
         double buyBillAmt = 0, sellBillAmt = 0;
+        double buyPaidAmt = 0, sellPaidAmt = 0;
         if (rs2.next()) {
             tktNo    = rs2.getString(1) != null ? rs2.getString(1) : "";
             pnrVal   = rs2.getString(2) != null ? rs2.getString(2) : "";
@@ -7281,12 +7037,14 @@ public void cancelTicketBooking(int bookingId, int cancelledBy, String reason,
             buyBillAmt   = rs2.getDouble(6);
             // sell_amount when sell agent, customer_amount when direct customer
             sellBillAmt  = hasSellAgent ? rs2.getDouble(7) : rs2.getDouble(8);
+            buyPaidAmt   = rs2.getDouble(9);
+            sellPaidAmt  = hasSellAgent ? rs2.getDouble(10) : rs2.getDouble(11);
         }
         rs2.close(); pt.close();
 
-        // Auto-calculate refunds (used for ticket_booking columns only)
-        double calcRefundBuy  = (cancelChargeBuy  != null) ? Math.max(0, buyBillAmt  - cancelChargeBuy)  : 0;
-        double calcRefundSell = (cancelChargeSell != null) ? Math.max(0, sellBillAmt - cancelChargeSell) : 0;
+        // Refund = amount already paid minus cancel charge (not full bill minus charge)
+        double calcRefundBuy  = (cancelChargeBuy  != null) ? Math.max(0, buyPaidAmt  - cancelChargeBuy)  : 0;
+        double calcRefundSell = (cancelChargeSell != null) ? Math.max(0, sellPaidAmt - cancelChargeSell) : 0;
 
         // Update cancel charge/refund columns in ticket_booking
         pt = con.prepareStatement(
@@ -7306,16 +7064,15 @@ public void cancelTicketBooking(int bookingId, int cancelledBy, String reason,
             " (booking_id,party_type,agent_id,party_name,transaction_type,bill_amount,amount,payment_mode_id,transaction_no,remarks,transaction_date,charge_type,cancel_charge)" +
             " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)";
 
-        // Buy Agent cancel – single row: bill_amount=refund, cancel_charge=cancel fee, amount=0 (pending)
-        if (cancelChargeBuy != null && cancelChargeBuy > 0) {
+        // Buy Agent cancel – record cancel charge + refund due (including 0 charge)
+        if (cancelChargeBuy != null && hasBuyAgent) {
             pt = con.prepareStatement(ledSql);
             pt.setInt(1, bookingId);
             pt.setString(2, "BUY_AGENT");
-            if (hasBuyAgent) pt.setInt(3, origBuyAgentId); else pt.setNull(3, Types.INTEGER);
+            pt.setInt(3, origBuyAgentId);
             pt.setNull(4, Types.VARCHAR);
             pt.setString(5, "DR");
-            double buyRefund = Math.max(0, buyBillAmt - cancelChargeBuy);
-            pt.setDouble(6, buyRefund); pt.setDouble(7, 0.0);
+            pt.setDouble(6, calcRefundBuy); pt.setDouble(7, 0.0);
             pt.setNull(8, Types.INTEGER);
             pt.setNull(9, Types.VARCHAR);
             pt.setString(10, "Cancel | PNR: " + pnrVal);
@@ -7324,8 +7081,8 @@ public void cancelTicketBooking(int bookingId, int cancelledBy, String reason,
             pt.executeUpdate(); pt.close();
         }
 
-        // Sell side cancel – single row: bill_amount=refund, cancel_charge=cancel fee, amount=0 (pending)
-        if (cancelChargeSell != null && cancelChargeSell > 0) {
+        // Sell side cancel – record cancel charge + refund due (including 0 charge)
+        if (cancelChargeSell != null && (hasSellAgent || sellBillAmt > 0.005 || sellPaidAmt > 0.005)) {
             String sParty = hasSellAgent ? "SELL_AGENT" : "CUSTOMER";
             pt = con.prepareStatement(ledSql);
             pt.setInt(1, bookingId);
@@ -7333,8 +7090,7 @@ public void cancelTicketBooking(int bookingId, int cancelledBy, String reason,
             if (hasSellAgent) pt.setInt(3, origSellAgentId); else pt.setNull(3, Types.INTEGER);
             if (!hasSellAgent && !origCustName.isEmpty()) pt.setString(4, origCustName); else pt.setNull(4, Types.VARCHAR);
             pt.setString(5, "CR");
-            double sellRefund = Math.max(0, sellBillAmt - cancelChargeSell);
-            pt.setDouble(6, sellRefund); pt.setDouble(7, 0.0);
+            pt.setDouble(6, calcRefundSell); pt.setDouble(7, 0.0);
             pt.setNull(8, Types.INTEGER);
             pt.setNull(9, Types.VARCHAR);
             pt.setString(10, "Cancel | PNR: " + pnrVal);
@@ -7516,14 +7272,12 @@ public Vector getTicketReport(String dateType, String fromDate, String toDate) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TICKET LEDGER REPORT
-// Aggregated by booking + party_type.
-// Row layout:
-//   [0] booking_id   [1] ticket_no   [2] pnr      [3] party_type
-//   [4] party_display (agent name or customer name)
-//   [5] transaction_type (DR/CR)
-//   [6] total_bill   [7] total_paid  [8] balance
-//   [9] first_date   [10] agent_id   [11] party_name
+// TICKET LEDGER REPORT — individual ledger rows (incl. cancel entries)
+// Row: [0]booking_id [1]ticket_no [2]pnr [3]party_type [4]party_display
+//      [5]bill_amount [6]paid_amount [7]line_balance [8]transaction_date
+//      [9]agent_id [10]party_name [11]payment_mode [12]txn_no [13]passengers
+//      [14]transaction_type [15]remarks [16]charge_type [17]txn_time [18]ledger_id
+//      [19]cancel_charge [20]is_cancelled
 // ─────────────────────────────────────────────────────────────────────────────
 public Vector getTicketLedgerReport(String fromDate, String toDate, int agentId) {
     Vector result = new Vector();
@@ -7549,7 +7303,9 @@ public Vector getTicketLedgerReport(String fromDate, String toDate, int agentId)
             " COALESCE(l.remarks, '') AS remarks," +
             " COALESCE(l.charge_type, '') AS charge_type," +
             " COALESCE(DATE_FORMAT(l.created_at, '%H:%i'), '') AS txn_time," +
-            " l.id AS ledger_id" +
+            " l.id AS ledger_id," +
+            " COALESCE(l.cancel_charge, 0) AS cancel_charge," +
+            " COALESCE(b.is_cancelled, 0) AS is_cancelled" +
             " FROM ticket_ledger l" +
             " LEFT JOIN ticket_booking b ON b.id = l.booking_id AND l.booking_id > 0" +
             " LEFT JOIN ticket_agent a ON a.id = l.agent_id" +
@@ -7578,6 +7334,53 @@ public Vector getTicketLedgerReport(String fromDate, String toDate, int agentId)
         if (con != null) try { con.close(); } catch (Exception e) { ; }
     }
     return result;
+}
+
+// Pending balance for a cancelled booking on one party side
+public double getBookingCancelPendingBalance(int bookingId, String partyType) {
+    if (bookingId <= 0 || partyType == null) return 0;
+    Connection con = null; PreparedStatement pt = null; ResultSet rs = null;
+    try {
+        con = util.DBConnectionManager.getConnectionFromPool();
+        String sql;
+        if ("BUY_AGENT".equals(partyType)) {
+            sql =
+                "SELECT (COALESCE(b.cancel_charge_buy,0) - COALESCE(b.buy_paid_amount,0)" +
+                "  - COALESCE((SELECT SUM(l.amount) FROM ticket_ledger l" +
+                "    WHERE l.booking_id=b.id AND l.party_type='BUY_AGENT'" +
+                "    AND COALESCE(l.bill_amount,0)=0),0)) AS pending_balance" +
+                " FROM ticket_booking b WHERE b.id=? AND b.is_cancelled=1 LIMIT 1";
+        } else if ("SELL_AGENT".equals(partyType)) {
+            sql =
+                "SELECT (COALESCE(b.sell_paid_amount,0) - COALESCE(b.cancel_charge_sell,0) - COALESCE(b.refund_to_sell,0)" +
+                "  - COALESCE((SELECT SUM(l.amount) FROM ticket_ledger l" +
+                "    WHERE l.booking_id=b.id AND l.party_type='SELL_AGENT'" +
+                "    AND COALESCE(l.bill_amount,0)=0),0)) AS pending_balance" +
+                " FROM ticket_booking b WHERE b.id=? AND b.is_cancelled=1 LIMIT 1";
+        } else if ("CUSTOMER".equals(partyType)) {
+            sql =
+                "SELECT (COALESCE(b.cust_paid_amount,0) - COALESCE(b.cancel_charge_sell,0) - COALESCE(b.refund_to_sell,0)" +
+                "  - COALESCE((SELECT SUM(l.amount) FROM ticket_ledger l" +
+                "    WHERE l.booking_id=b.id AND l.party_type='CUSTOMER'" +
+                "    AND COALESCE(l.bill_amount,0)=0),0)) AS pending_balance" +
+                " FROM ticket_booking b WHERE b.id=? AND b.is_cancelled=1 LIMIT 1";
+        } else {
+            return 0;
+        }
+        pt = con.prepareStatement(sql);
+        pt.setInt(1, bookingId);
+        rs = pt.executeQuery();
+        if (rs.next()) {
+            Object v = rs.getObject("pending_balance");
+            return v != null ? ((Number) v).doubleValue() : 0;
+        }
+    } catch (Exception e) { e.printStackTrace(); }
+    finally {
+        if (rs  != null) try { rs.close();  } catch (Exception e) { ; }
+        if (pt  != null) try { pt.close();  } catch (Exception e) { ; }
+        if (con != null) try { con.close(); } catch (Exception e) { ; }
+    }
+    return 0;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -7612,7 +7415,7 @@ public Vector getCollectionReport(String fromDate, String toDate, int agentId, S
             " LEFT JOIN ticket_agent a ON a.id = l.agent_id" +
             " LEFT JOIN ticket_city cf ON cf.id = b.oneway_from_id" +
             " LEFT JOIN ticket_city ct ON ct.id = b.oneway_to_id" +
-            " WHERE l.transaction_date BETWEEN ? AND ?" + ptFilter + agFilter +
+            " WHERE l.transaction_date BETWEEN ? AND ? AND COALESCE(b.is_cancelled,0)=0" + ptFilter + agFilter +
             " GROUP BY l.booking_id, l.party_type, l.transaction_type, l.agent_id, l.party_name," +
             " b.ticket_no, b.pnr, a.name, cf.name, ct.name, b.booking_date" +
             " ORDER BY MIN(l.transaction_date) DESC, l.booking_id DESC";
@@ -7659,7 +7462,7 @@ public Vector getAgentPaidReport(String fromDate, String toDate, int agentId) {
             " LEFT JOIN ticket_agent a ON a.id = l.agent_id" +
             " LEFT JOIN ticket_city cf ON cf.id = b.oneway_from_id" +
             " LEFT JOIN ticket_city ct ON ct.id = b.oneway_to_id" +
-            " WHERE l.party_type = 'BUY_AGENT' AND l.transaction_date BETWEEN ? AND ?" + agFilter +
+            " WHERE l.party_type = 'BUY_AGENT' AND l.transaction_date BETWEEN ? AND ? AND COALESCE(b.is_cancelled,0)=0" + agFilter +
             " GROUP BY l.booking_id, l.party_type, l.transaction_type, l.agent_id, l.party_name," +
             " b.ticket_no, b.pnr, a.name, cf.name, ct.name, b.booking_date" +
             " ORDER BY MIN(l.transaction_date) DESC, l.booking_id DESC";
@@ -7849,7 +7652,7 @@ public Vector getTicketPaymentsDetail(String fromDate, String toDate, int agentI
             " LEFT JOIN ticket_payment_mode pm ON pm.id = l.payment_mode_id" +
             " LEFT JOIN ticket_city cf ON cf.id = b.oneway_from_id" +
             " LEFT JOIN ticket_city ct ON ct.id = b.oneway_to_id" +
-            " WHERE l.transaction_date BETWEEN ? AND ?" + ptFilter + agFilter +
+            " WHERE l.transaction_date BETWEEN ? AND ? AND COALESCE(b.is_cancelled,0)=0" + ptFilter + agFilter +
             " ORDER BY l.transaction_date DESC, l.booking_id DESC, l.id ASC";
         pt = con.prepareStatement(sql);
         pt.setString(1, fromDate);
@@ -8023,110 +7826,115 @@ public Vector getAgentStatement(String fromDate, String toDate, int agentId) {
     try {
         con = util.DBConnectionManager.getConnectionFromPool();
 
-        // Step 1: Get opening balance + agent name
-        pt = con.prepareStatement(
-            "SELECT SUM(CASE" +
-            "  WHEN COALESCE(bill_amount,0)>0 AND transaction_type='DR' THEN bill_amount-amount" +
-            "  WHEN COALESCE(bill_amount,0)>0 AND transaction_type='CR' THEN -(bill_amount-amount)" +
-            "  WHEN COALESCE(bill_amount,0)<=0 AND transaction_type='DR' THEN -amount" +
-            "  WHEN COALESCE(bill_amount,0)<=0 AND transaction_type='CR' THEN amount" +
-            "  ELSE 0 END) AS open_bal," +
-            " a.name AS agent_name" +
-            " FROM ticket_ledger l LEFT JOIN ticket_agent a ON a.id = l.agent_id" +
-            " WHERE l.agent_id = ? AND DATE(l.transaction_date) < ?" +
-            " GROUP BY a.name");
-        pt.setInt(1, agentId);
-        pt.setString(2, fromDate);
-        rs = pt.executeQuery();
-        double openBal = 0.0;
         String agentName = "";
+        pt = con.prepareStatement("SELECT name FROM ticket_agent WHERE id=?");
+        pt.setInt(1, agentId);
+        rs = pt.executeQuery();
         if (rs.next()) {
-            Object ob = rs.getObject("open_bal");
-            openBal = ob != null ? ((Number) ob).doubleValue() : 0.0;
-            agentName = rs.getString("agent_name");
+            agentName = rs.getString("name");
             if (agentName == null) agentName = "";
         }
         rs.close(); rs = null; pt.close(); pt = null;
 
-        // Fetch agent name if not found from opening balance query
-        if (agentName.isEmpty()) {
-            pt = con.prepareStatement("SELECT name FROM ticket_agent WHERE id=?");
-            pt.setInt(1, agentId);
-            rs = pt.executeQuery();
-            if (rs.next()) { agentName = rs.getString("name"); if (agentName == null) agentName = ""; }
-            rs.close(); rs = null; pt.close(); pt = null;
-        }
-
-        // Step 2: Opening balance row
-        String openDr = "", openCr = "", openDir = "NIL";
-        if (openBal >= 0.005)       { openDr = String.format("%.2f", openBal);   openDir = "DR"; }
-        else if (openBal <= -0.005) { openCr = String.format("%.2f", -openBal);  openDir = "CR"; }
-        Vector openRow = new Vector();
-        openRow.add("OPEN");
-        openRow.add("");
-        openRow.add("Opening Balance");
-        openRow.add(openDr);
-        openRow.add(openCr);
-        openRow.add(String.format("%.2f", Math.abs(openBal)));
-        openRow.add(openDir);
-        openRow.add(""); openRow.add(""); openRow.add(""); openRow.add("");
-        openRow.add(agentName);
-        openRow.add("");
-        openRow.add(""); // [13] remarks
-        openRow.add(""); // [14] bill_amount
-        result.add(openRow);
-
-        // Step 3: Period transactions (subquery pre-aggregates passengers)
         String sql =
-            "SELECT l.id, DATE_FORMAT(l.transaction_date,'%d/%m/%Y') AS txn_date," +
+            "SELECT l.id, l.transaction_date," +
+            " DATE_FORMAT(l.transaction_date,'%d/%m/%Y') AS txn_date," +
             " COALESCE(b.ticket_no, CONCAT('TKT-',LPAD(b.id,3,'0'))) AS ticket_no," +
             " l.transaction_type, l.amount, COALESCE(l.bill_amount,0) AS bill_amount, l.remarks," +
             " b.pnr, b.id AS booking_id," +
             " oc.name AS from_city, dc.name AS to_city," +
             " b.oneway_airlines, DATE_FORMAT(b.oneway_travel_date,'%d%b%Y') AS oneway_date," +
             " b.oneway_flight_no, l.party_type, l.party_name," +
-            " pax.passengers" +
+            " pax.passengers," +
+            " COALESCE(b.is_cancelled,0) AS is_cancelled," +
+            " COALESCE(l.charge_type,'') AS charge_type," +
+            " COALESCE(l.cancel_charge,0) AS cancel_charge" +
             " FROM ticket_ledger l" +
-            " JOIN ticket_booking b ON l.booking_id = b.id" +
+            " LEFT JOIN ticket_booking b ON l.booking_id = b.id AND l.booking_id > 0" +
             " LEFT JOIN ticket_city oc ON b.oneway_from_id = oc.id" +
             " LEFT JOIN ticket_city dc ON b.oneway_to_id = dc.id" +
             " LEFT JOIN (SELECT booking_id, GROUP_CONCAT(passenger_name ORDER BY id SEPARATOR '||') AS passengers" +
             "            FROM ticket_passenger GROUP BY booking_id) pax ON pax.booking_id = b.id" +
-            " WHERE l.agent_id = ? AND DATE(l.transaction_date) BETWEEN ? AND ?" +
-            " ORDER BY l.transaction_date ASC, l.id ASC";
+            " WHERE l.agent_id = ? AND DATE(l.transaction_date) <= ?" +
+            " ORDER BY l.transaction_date ASC, l.created_at ASC, l.id ASC";
         pt = con.prepareStatement(sql);
         pt.setInt(1, agentId);
-        pt.setString(2, fromDate);
-        pt.setString(3, toDate);
+        pt.setString(2, toDate);
         rs = pt.executeQuery();
 
-        double runBal = openBal;
+        double runBal = 0.0;
         double totalDr = 0.0, totalCr = 0.0;
+        boolean openAdded = false;
 
         while (rs.next()) {
-            String txnType  = rs.getString("transaction_type");
-            double billAmt  = rs.getDouble("bill_amount");
-            double paidAmt  = rs.getDouble("amount");
-            boolean isCollection = (billAmt <= 0.005); // bill_amount=0 → balance collection entry
+            String txnDateRaw = rs.getString("transaction_date");
+            if (txnDateRaw == null) continue;
+            boolean inPeriod = txnDateRaw.compareTo(fromDate) >= 0 && txnDateRaw.compareTo(toDate) <= 0;
+            if (!inPeriod && txnDateRaw.compareTo(fromDate) >= 0) continue;
 
-            // Determine display direction and amount
-            // Booking entries: show NET (bill - paid at booking) in original direction
-            // Collection entries: show payment in OPPOSITE direction (reduces the balance)
-            double displayAmt;
-            String displayDir;
-            if (isCollection) {
-                displayAmt = paidAmt;
-                displayDir = "DR".equals(txnType) ? "CR" : "DR"; // SELL receipt→CR, BUY payment→DR
+            int bookingId = rs.getInt("booking_id");
+            int isCancelled = rs.getInt("is_cancelled");
+            String chargeType = rs.getString("charge_type");
+            if (chargeType == null) chargeType = "";
+            String partyType = rs.getString("party_type");
+            if (partyType == null) partyType = "";
+            String txnType = rs.getString("transaction_type");
+            double billAmt = rs.getDouble("bill_amount");
+            double paidAmt = rs.getDouble("amount");
+            double cancelCharge = rs.getDouble("cancel_charge");
+            boolean isCancelRow = "CANCEL_CHARGE".equals(chargeType);
+
+            if (isCancelled == 1 && !isCancelRow) continue;
+
+            double displayAmt = 0;
+            String displayDir = "NIL";
+            if (isCancelRow) {
+                double pending = getBookingCancelPendingBalance(bookingId, partyType);
+                displayAmt = Math.abs(pending);
+                if (pending > 0.005) displayDir = "CR";
+                else if (pending < -0.005) displayDir = "DR";
             } else {
-                displayAmt = Math.max(billAmt - paidAmt, 0);
-                displayDir = txnType; // DR for SELL_AGENT, CR for BUY_AGENT
+                boolean isCollection = billAmt <= 0.005;
+                if (isCollection) {
+                    displayAmt = paidAmt;
+                    if (displayAmt <= 0.005) continue;
+                    displayDir = "DR".equals(txnType) ? "CR" : "DR";
+                } else {
+                    displayAmt = Math.max(billAmt - paidAmt, 0);
+                    if (displayAmt <= 0.005) continue;
+                    displayDir = txnType;
+                }
             }
 
-            // Update running balance (positive=DR=agent owes us, negative=CR=we owe agent)
-            if ("DR".equals(displayDir)) { runBal += displayAmt; totalDr += displayAmt; }
-            else                         { runBal -= displayAmt; totalCr += displayAmt; }
+            if (inPeriod && !openAdded) {
+                String openDr = "", openCr = "", openDir = "NIL";
+                if (runBal >= 0.005)       { openDr = String.format("%.2f", runBal);   openDir = "DR"; }
+                else if (runBal <= -0.005) { openCr = String.format("%.2f", -runBal);  openDir = "CR"; }
+                Vector openRow = new Vector();
+                openRow.add("OPEN");
+                openRow.add("");
+                openRow.add("Opening Balance");
+                openRow.add(openDr);
+                openRow.add(openCr);
+                openRow.add(String.format("%.2f", Math.abs(runBal)));
+                openRow.add(openDir);
+                openRow.add(""); openRow.add(""); openRow.add(""); openRow.add("");
+                openRow.add(agentName);
+                openRow.add("");
+                openRow.add("");
+                openRow.add("");
+                result.add(openRow);
+                openAdded = true;
+            }
 
-            // Passengers
+            if ("DR".equals(displayDir)) runBal += displayAmt;
+            else if ("CR".equals(displayDir)) runBal -= displayAmt;
+
+            if (!inPeriod) continue;
+
+            if ("DR".equals(displayDir)) totalDr += displayAmt;
+            else if ("CR".equals(displayDir)) totalCr += displayAmt;
+
             String passengers = rs.getString("passengers");
             String pax1 = "", extraPax = "";
             if (passengers != null && !passengers.isEmpty()) {
@@ -8142,20 +7950,21 @@ public Vector getAgentStatement(String fromDate, String toDate, int agentId) {
                 }
             }
 
-            // Particulars main line
             String particulars = pax1;
-            if (particulars.isEmpty()) {
+            if (isCancelRow) {
+                if (!particulars.isEmpty()) particulars = particulars + " (Cancelled)";
+                else particulars = "Cancelled Ticket";
+            } else if (particulars.isEmpty()) {
                 String rem = rs.getString("remarks");
                 if (rem != null && !rem.isEmpty()) {
                     particulars = rem;
-                } else if (isCollection) {
+                } else if (billAmt <= 0.005) {
                     particulars = "DR".equals(txnType) ? "Payment Received" : "Payment Made";
                 } else {
                     particulars = "DR".equals(txnType) ? "Ticket Booking" : "Ticket Purchase";
                 }
             }
 
-            // Flight info
             String flightNo   = rs.getString("oneway_flight_no");
             String pnr        = rs.getString("pnr");
             String onewayDate = rs.getString("oneway_date");
@@ -8165,21 +7974,27 @@ public Vector getAgentStatement(String fromDate, String toDate, int agentId) {
             if (onewayDate != null && !onewayDate.isEmpty()) fi.append("Trv.dt:").append(onewayDate);
             String flightInfo = fi.toString().trim();
 
-            // Route
             String fromCity = rs.getString("from_city");
             String toCity   = rs.getString("to_city");
             String route    = (fromCity != null && toCity != null) ? fromCity + "/" + toCity : "";
 
-            // Voucher number
-            String vouNo = isCollection ? "REC-" + rs.getInt("id") : rs.getString("ticket_no");
+            boolean isCollection = !isCancelRow && billAmt <= 0.005;
+            String vouNo = isCancelRow ? rs.getString("ticket_no")
+                    : (isCollection ? "REC-" + rs.getInt("id") : rs.getString("ticket_no"));
 
             String drAmt  = "DR".equals(displayDir) ? String.format("%.2f", displayAmt) : "";
             String crAmt  = "CR".equals(displayDir) ? String.format("%.2f", displayAmt) : "";
             String balStr = String.format("%.2f", Math.abs(runBal));
             String balDir = runBal >= 0.005 ? "DR" : (runBal <= -0.005 ? "CR" : "NIL");
-            String pType  = rs.getString("party_type"); if (pType == null) pType = "";
+            String pType  = partyType;
 
-            String rawRemarks = rs.getString("remarks"); if (rawRemarks == null) rawRemarks = "";
+            String rawRemarks = rs.getString("remarks");
+            if (rawRemarks == null) rawRemarks = "";
+            if (isCancelRow) {
+                rawRemarks = "Cancel Charge: " + String.format("%.2f", cancelCharge)
+                        + " | Refund Due: " + String.format("%.2f", Math.abs(billAmt));
+            }
+
             Vector row = new Vector();
             row.add("TXN");
             row.add(rs.getString("txn_date"));
@@ -8194,12 +8009,32 @@ public Vector getAgentStatement(String fromDate, String toDate, int agentId) {
             row.add(extraPax);
             row.add(agentName);
             row.add(pType);
-            row.add(rawRemarks); // [13] remarks
-            row.add(billAmt > 0.005 ? String.format("%.2f", billAmt) : ""); // [14] bill_amount
+            row.add(rawRemarks);
+            row.add(isCancelRow ? String.format("%.2f", cancelCharge)
+                    : (billAmt > 0.005 ? String.format("%.2f", billAmt) : ""));
             result.add(row);
         }
 
-        // Step 4: Totals row
+        if (!openAdded) {
+            String openDr = "", openCr = "", openDir = "NIL";
+            if (runBal >= 0.005)       { openDr = String.format("%.2f", runBal);   openDir = "DR"; }
+            else if (runBal <= -0.005) { openCr = String.format("%.2f", -runBal);  openDir = "CR"; }
+            Vector openRow = new Vector();
+            openRow.add("OPEN");
+            openRow.add("");
+            openRow.add("Opening Balance");
+            openRow.add(openDr);
+            openRow.add(openCr);
+            openRow.add(String.format("%.2f", Math.abs(runBal)));
+            openRow.add(openDir);
+            openRow.add(""); openRow.add(""); openRow.add(""); openRow.add("");
+            openRow.add(agentName);
+            openRow.add("");
+            openRow.add("");
+            openRow.add("");
+            result.add(openRow);
+        }
+
         String balStr = String.format("%.2f", Math.abs(runBal));
         String balDir = runBal >= 0.005 ? "DR" : (runBal <= -0.005 ? "CR" : "NIL");
         Vector totRow = new Vector();
@@ -8210,8 +8045,8 @@ public Vector getAgentStatement(String fromDate, String toDate, int agentId) {
         totRow.add(balStr); totRow.add(balDir);
         totRow.add(""); totRow.add(""); totRow.add(""); totRow.add("");
         totRow.add(agentName); totRow.add("");
-        totRow.add(""); // [13] remarks
-        totRow.add(""); // [14] bill_amount
+        totRow.add("");
+        totRow.add("");
         result.add(totRow);
 
     } catch (Exception e) {

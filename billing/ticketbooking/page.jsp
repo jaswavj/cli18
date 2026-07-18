@@ -1260,8 +1260,8 @@ function cancelBookingAction() {
         const params = new URLSearchParams();
         params.set('bookingId', editBookingId);
         params.set('reason', reason);
-        if (cancelChargeBuy)  params.set('cancelChargeBuy',  cancelChargeBuy);
-        if (cancelChargeSell) params.set('cancelChargeSell', cancelChargeSell);
+        if (editHasBuy)  params.set('cancelChargeBuy',  cancelChargeBuy  !== '' ? cancelChargeBuy  : '0');
+        if (editHasSell) params.set('cancelChargeSell', cancelChargeSell !== '' ? cancelChargeSell : '0');
         fetch(ctx + '/ticketbooking/cancelBooking.jsp', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
