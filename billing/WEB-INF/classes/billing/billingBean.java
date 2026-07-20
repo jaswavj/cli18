@@ -7383,6 +7383,78 @@ public double getBookingCancelPendingBalance(int bookingId, String partyType) {
     return 0;
 }
 
+// Ledger totals for one booking + party (sums all ticket_ledger rows incl. balance collections)
+// Returns Vector: [0]totalBill [1]totalPaid [2]balance [3]balanceDir(DR/CR/NIL)
+public Vector getBookingLedgerTotals(int bookingId, String partyType) {
+    Vector result = new Vector();
+    result.add(0.0);
+    result.add(0.0);
+    result.add(0.0);
+    result.add("NIL");
+    if (bookingId <= 0 || partyType == null) return result;
+
+    Connection con = null;
+    PreparedStatement pt = null;
+    ResultSet rs = null;
+    try {
+        con = util.DBConnectionManager.getConnectionFromPool();
+
+        pt = con.prepareStatement(
+            "SELECT COALESCE(b.is_cancelled,0) AS is_cancelled FROM ticket_booking b WHERE b.id=? LIMIT 1");
+        pt.setInt(1, bookingId);
+        rs = pt.executeQuery();
+        boolean isCancelled = rs.next() && rs.getInt("is_cancelled") == 1;
+        rs.close(); rs = null; pt.close(); pt = null;
+
+        if (isCancelled) {
+            double pending = getBookingCancelPendingBalance(bookingId, partyType);
+            double balance = Math.abs(pending);
+            String dir = "NIL";
+            if (pending > 0.005) dir = "CR";
+            else if (pending < -0.005) dir = "DR";
+            result.set(0, 0.0);
+            result.set(1, 0.0);
+            result.set(2, balance);
+            result.set(3, dir);
+            return result;
+        }
+
+        pt = con.prepareStatement(
+            "SELECT COALESCE(SUM(COALESCE(l.bill_amount,0)),0) AS total_bill," +
+            " COALESCE(SUM(COALESCE(l.amount,0)),0) AS total_paid" +
+            " FROM ticket_ledger l" +
+            " WHERE l.booking_id=? AND l.party_type=?" +
+            " AND COALESCE(l.charge_type,'') <> 'CANCEL_CHARGE'");
+        pt.setInt(1, bookingId);
+        pt.setString(2, partyType);
+        rs = pt.executeQuery();
+        double totalBill = 0, totalPaid = 0;
+        if (rs.next()) {
+            totalBill = rs.getDouble("total_bill");
+            totalPaid = rs.getDouble("total_paid");
+        }
+
+        double net = totalBill - totalPaid;
+        double balance = 0;
+        String dir = "NIL";
+        if (net > 0.005) {
+            balance = net;
+            dir = "BUY_AGENT".equals(partyType) ? "CR" : "DR";
+        }
+
+        result.set(0, totalBill);
+        result.set(1, totalPaid);
+        result.set(2, balance);
+        result.set(3, dir);
+    } catch (Exception e) { e.printStackTrace(); }
+    finally {
+        if (rs  != null) try { rs.close();  } catch (Exception e) { ; }
+        if (pt  != null) try { pt.close();  } catch (Exception e) { ; }
+        if (con != null) try { con.close(); } catch (Exception e) { ; }
+    }
+    return result;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // COLLECTION REPORT  — Sell to Customer + Sell to Agent ledger (with balance collections)
 // Row layout: [0]booking_id [1]ticket_no [2]pnr [3]party_type [4]party_display

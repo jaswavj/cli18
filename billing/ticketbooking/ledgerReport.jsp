@@ -34,6 +34,7 @@ String fromDisp = fromDate, toDisp = toDate;
 try { fromDisp = dpFmt.format(iFmt.parse(fromDate)); } catch (Exception e) {}
 try { toDisp   = dpFmt.format(iFmt.parse(toDate));   } catch (Exception e) {}
 Vector rows = new Vector();
+java.util.LinkedHashMap bookingRowMap = new java.util.LinkedHashMap();
 for (int _fi = 0; _fi < allRows.size(); _fi++) {
     Vector _fr = (Vector) allRows.get(_fi);
     String chargeType = _fr.size() > 16 && _fr.get(16) != null ? _fr.get(16).toString() : "";
@@ -45,12 +46,44 @@ for (int _fi = 0; _fi < allRows.size(); _fi++) {
     }
     if (isCancelledBk) continue;
 
-    String rowTxnType = _fr.get(14) != null ? _fr.get(14).toString() : "DR";
-    double bill = _fr.get(5) != null ? Math.abs(Double.parseDouble(_fr.get(5).toString())) : 0;
-    double paid = _fr.get(6) != null ? Math.abs(Double.parseDouble(_fr.get(6).toString())) : 0;
-    double unsettled = Math.max(0, bill - paid);
-    if (unsettled <= 0.005) continue;
-    if (txnFilter.isEmpty() || txnFilter.equals(rowTxnType)) rows.add(_fr);
+    int bookingId = _fr.get(0) != null ? Integer.parseInt(_fr.get(0).toString()) : 0;
+    String partyType = _fr.get(3) != null ? _fr.get(3).toString() : "";
+    if (bookingId <= 0 || partyType.isEmpty()) continue;
+
+    String mapKey = bookingId + "|" + partyType;
+    double rowBill = _fr.get(5) != null ? Math.abs(Double.parseDouble(_fr.get(5).toString())) : 0;
+    Vector existing = (Vector) bookingRowMap.get(mapKey);
+    if (existing == null) {
+        bookingRowMap.put(mapKey, _fr);
+    } else {
+        double existBill = existing.get(5) != null ? Math.abs(Double.parseDouble(existing.get(5).toString())) : 0;
+        if (rowBill > existBill) bookingRowMap.put(mapKey, _fr);
+    }
+}
+
+java.util.Iterator bkIt = bookingRowMap.entrySet().iterator();
+while (bkIt.hasNext()) {
+    java.util.Map.Entry bkEn = (java.util.Map.Entry) bkIt.next();
+    Vector _fr = (Vector) bkEn.getValue();
+    int bookingId = _fr.get(0) != null ? Integer.parseInt(_fr.get(0).toString()) : 0;
+    String partyType = _fr.get(3) != null ? _fr.get(3).toString() : "";
+    Vector totals = billing.getBookingLedgerTotals(bookingId, partyType);
+    double totalBill = totals.get(0) != null ? ((Number) totals.get(0)).doubleValue() : 0;
+    double totalPaid = totals.get(1) != null ? ((Number) totals.get(1)).doubleValue() : 0;
+    double balance = totals.get(2) != null ? ((Number) totals.get(2)).doubleValue() : 0;
+    String balDir = totals.get(3) != null ? totals.get(3).toString() : "NIL";
+
+    if (!txnFilter.isEmpty() && balance > 0.005 && !txnFilter.equals(balDir)) continue;
+
+    Vector rowCopy = new Vector(_fr);
+    rowCopy.set(5, totalBill);
+    rowCopy.set(6, totalPaid);
+    if (rowCopy.size() > 21) rowCopy.set(21, balDir);
+    else {
+        while (rowCopy.size() < 21) rowCopy.add("");
+        rowCopy.add(balDir);
+    }
+    rows.add(rowCopy);
 }
 
 DecimalFormat df = new DecimalFormat("0.00");
@@ -360,6 +393,8 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
             double cancelChg     = r.size() > 19 && r.get(19) != null ? Math.abs(Double.parseDouble(r.get(19).toString())) : 0;
             boolean isCancelRow  = "CANCEL_CHARGE".equals(chargeType);
             String partyDispAttr = partyDisp.replace("\"", "&quot;");
+            String ledgerBalDir  = r.size() > 21 && r.get(21) != null && !isCancelRow
+                    ? r.get(21).toString() : "";
 
             double bal;
             String typeLabel;
@@ -374,6 +409,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
                 dispPaid = bill;
             } else {
                 bal = Math.max(0, bill - paid);
+                if (!ledgerBalDir.isEmpty() && !"NIL".equals(ledgerBalDir)) txnType = ledgerBalDir;
                 typeLabel = "Ticket";
             }
 
