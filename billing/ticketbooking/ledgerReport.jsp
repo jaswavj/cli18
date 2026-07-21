@@ -11,80 +11,24 @@ if (userId == null) {
 String ctx = request.getContextPath();
 SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
 String today    = sdf.format(new java.util.Date());
-String fromDate = request.getParameter("fromDate");
-String toDate   = request.getParameter("toDate");
 String agentIdP  = request.getParameter("agentFilter");
 String txnFilter = request.getParameter("txnFilter");
-if (fromDate  == null || fromDate.isEmpty())  fromDate  = today;
-if (toDate    == null || toDate.isEmpty())    toDate    = today;
+String includeCustomerP = request.getParameter("includeCustomer");
 if (txnFilter == null || txnFilter.isEmpty()) txnFilter = "";
+boolean includeCustomer = "1".equals(includeCustomerP);
 int agentFilterId = 0;
 try { if (agentIdP != null && !agentIdP.isEmpty()) agentFilterId = Integer.parseInt(agentIdP); } catch (Exception e) {}
-boolean allowMultiSelect = ("CR".equals(txnFilter) || "DR".equals(txnFilter)) && agentFilterId > 0;
+int effectiveAgentId = includeCustomer ? 0 : agentFilterId;
+boolean allowMultiSelect = includeCustomer
+    ? "DR".equals(txnFilter)
+    : (("CR".equals(txnFilter) || "DR".equals(txnFilter)) && agentFilterId > 0);
 
 Vector agents   = billing.getTicketAgents();
 Vector payModes = billing.getTicketPaymentModes();
-Vector allRows  = billing.getTicketLedgerReport(fromDate, toDate, agentFilterId);
+Vector rows = billing.getPendingBalanceCollection(effectiveAgentId, includeCustomer, txnFilter);
 Vector companyDet = userb.getCompanyDetails();
 String companyName = (companyDet.size() > 1 && companyDet.get(1) != null) ? companyDet.get(1).toString() : "";
 String companyAddr = (companyDet.size() > 2 && companyDet.get(2) != null) ? companyDet.get(2).toString() : "";
-java.text.SimpleDateFormat dpFmt = new java.text.SimpleDateFormat("dd/MM/yyyy");
-java.text.SimpleDateFormat iFmt  = new java.text.SimpleDateFormat("yyyy-MM-dd");
-String fromDisp = fromDate, toDisp = toDate;
-try { fromDisp = dpFmt.format(iFmt.parse(fromDate)); } catch (Exception e) {}
-try { toDisp   = dpFmt.format(iFmt.parse(toDate));   } catch (Exception e) {}
-Vector rows = new Vector();
-java.util.LinkedHashMap bookingRowMap = new java.util.LinkedHashMap();
-for (int _fi = 0; _fi < allRows.size(); _fi++) {
-    Vector _fr = (Vector) allRows.get(_fi);
-    String chargeType = _fr.size() > 16 && _fr.get(16) != null ? _fr.get(16).toString() : "";
-    boolean isCancelledBk = _fr.size() > 20 && "1".equals(String.valueOf(_fr.get(20)));
-
-    if ("CANCEL_CHARGE".equals(chargeType)) {
-        rows.add(_fr);
-        continue;
-    }
-    if (isCancelledBk) continue;
-
-    int bookingId = _fr.get(0) != null ? Integer.parseInt(_fr.get(0).toString()) : 0;
-    String partyType = _fr.get(3) != null ? _fr.get(3).toString() : "";
-    if (bookingId <= 0 || partyType.isEmpty()) continue;
-
-    String mapKey = bookingId + "|" + partyType;
-    double rowBill = _fr.get(5) != null ? Math.abs(Double.parseDouble(_fr.get(5).toString())) : 0;
-    Vector existing = (Vector) bookingRowMap.get(mapKey);
-    if (existing == null) {
-        bookingRowMap.put(mapKey, _fr);
-    } else {
-        double existBill = existing.get(5) != null ? Math.abs(Double.parseDouble(existing.get(5).toString())) : 0;
-        if (rowBill > existBill) bookingRowMap.put(mapKey, _fr);
-    }
-}
-
-java.util.Iterator bkIt = bookingRowMap.entrySet().iterator();
-while (bkIt.hasNext()) {
-    java.util.Map.Entry bkEn = (java.util.Map.Entry) bkIt.next();
-    Vector _fr = (Vector) bkEn.getValue();
-    int bookingId = _fr.get(0) != null ? Integer.parseInt(_fr.get(0).toString()) : 0;
-    String partyType = _fr.get(3) != null ? _fr.get(3).toString() : "";
-    Vector totals = billing.getBookingLedgerTotals(bookingId, partyType);
-    double totalBill = totals.get(0) != null ? ((Number) totals.get(0)).doubleValue() : 0;
-    double totalPaid = totals.get(1) != null ? ((Number) totals.get(1)).doubleValue() : 0;
-    double balance = totals.get(2) != null ? ((Number) totals.get(2)).doubleValue() : 0;
-    String balDir = totals.get(3) != null ? totals.get(3).toString() : "NIL";
-
-    if (!txnFilter.isEmpty() && balance > 0.005 && !txnFilter.equals(balDir)) continue;
-
-    Vector rowCopy = new Vector(_fr);
-    rowCopy.set(5, totalBill);
-    rowCopy.set(6, totalPaid);
-    if (rowCopy.size() > 21) rowCopy.set(21, balDir);
-    else {
-        while (rowCopy.size() < 21) rowCopy.add("");
-        rowCopy.add(balDir);
-    }
-    rows.add(rowCopy);
-}
 
 DecimalFormat df = new DecimalFormat("0.00");
 int tableColCount = allowMultiSelect ? 14 : 13;
@@ -115,7 +59,7 @@ for (int i = 0; i < rows.size(); i++) {
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Ticket Ledger</title>
+<title>Balance Collection</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <%@ include file="/assets/common/head.jsp" %>
 <style>
@@ -250,19 +194,11 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
   <div class="rpt-hdr">
     <div class="rpt-title">
       <i class="fa-solid fa-book-open"></i>
-      <span>TICKET LEDGER</span>
+      <span>BALANCE COLLECTION</span>
     </div>
     <div class="hdr-divider"></div>
 
     <form method="get" action="" style="display:contents;">
-      <div class="fg">
-        <div class="fg-lbl">From Date</div>
-        <input type="date" name="fromDate" class="fg-inp" value="<%=fromDate%>" style="width:135px;">
-      </div>
-      <div class="fg">
-        <div class="fg-lbl">To Date</div>
-        <input type="date" name="toDate" class="fg-inp" value="<%=toDate%>" style="width:135px;">
-      </div>
       <div class="fg">
         <div class="fg-lbl">Type</div>
         <select name="txnFilter" class="fg-sel" style="width:110px;">
@@ -273,15 +209,22 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
       </div>
       <div class="fg">
         <div class="fg-lbl">Agent</div>
-        <select name="agentFilter" class="fg-sel" style="width:140px;">
+        <select name="agentFilter" class="fg-sel" style="width:140px;" <%=includeCustomer?"disabled":""%>>
           <option value="0">All Agents</option>
           <%for (int i = 0; i < agents.size(); i++) { Vector a = (Vector) agents.get(i);%>
           <option value="<%=a.get(0)%>" <%=(agentFilterId == Integer.parseInt(a.get(0).toString()) ? "selected" : "")%>><%=a.get(1)%></option>
           <%}%>
         </select>
       </div>
+      <div class="fg" style="justify-content:flex-end;">
+        <div class="fg-lbl">&nbsp;</div>
+        <label style="display:flex;align-items:center;gap:7px;height:33px;padding:0 10px;border:1.5px solid rgba(255,255,255,.25);border-radius:var(--r-sm);background:rgba(255,255,255,.12);color:#fff;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">
+          <input type="checkbox" name="includeCustomer" value="1" <%=includeCustomer?"checked":""%> style="width:15px;height:15px;accent-color:var(--gold);">
+          Customer Balance Only
+        </label>
+      </div>
       <button type="submit" class="bb bb-gold">
-        <i class="fa-solid fa-magnifying-glass"></i> Search
+        <i class="fa-solid fa-magnifying-glass"></i> Load Pending
       </button>
     </form>
 
@@ -298,8 +241,8 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
       <%if (!companyAddr.isEmpty()){%><div style="color:rgba(255,255,255,.75);font-size:12px;margin-top:2px;"><%=companyAddr%></div><%}%>
     </div>
     <div style="text-align:right;color:rgba(255,255,255,.7);font-size:11px;">
-      <div style="font-weight:700;color:#fff;font-size:13px;">Ticket Ledger Report</div>
-      <div style="margin-top:3px;"><%=fromDisp%> &nbsp;to&nbsp; <%=toDisp%></div>
+      <div style="font-weight:700;color:#fff;font-size:13px;">Balance Collection — Pending Only</div>
+      <div style="margin-top:3px;"><%=includeCustomer ? "Customer Balances Only" : "Agent Balances"%><% if (!includeCustomer && agentFilterId > 0) { %> &nbsp;|&nbsp; Filter Applied<% } %></div>
     </div>
   </div>
 
@@ -368,7 +311,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
         %>
           <tr><td colspan="<%=tableColCount%>" style="text-align:center;padding:30px;color:var(--muted);">
             <i class="fa-solid fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;"></i>
-            No ledger entries found for this period.
+            No pending balances found.
           </td></tr>
         <%
         } else {

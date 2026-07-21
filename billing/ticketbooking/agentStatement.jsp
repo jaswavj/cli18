@@ -159,6 +159,13 @@ java.util.Collections.sort(ticketPayList, new java.util.Comparator() {
         return a.get("sortId").toString().compareTo(b.get("sortId").toString());
     }
 });
+double tpTotalBill = 0, tpTotalPaid = 0, tpTotalBalance = 0;
+for (int ti = 0; ti < ticketPayList.size(); ti++) {
+    java.util.Map info = (java.util.Map) ticketPayList.get(ti);
+    tpTotalBill += ((Double) info.get("bill")).doubleValue();
+    tpTotalPaid += ((Double) info.get("paid")).doubleValue();
+    if (info.get("balance") != null) tpTotalBalance += ((Double) info.get("balance")).doubleValue();
+}
 %>
 <!DOCTYPE html>
 <html lang="en">
@@ -252,9 +259,10 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
 .tp-mode-lines{font-size:10px;line-height:1.45;color:var(--muted);}
 .tp-bal-pos{color:var(--red);font-weight:700;}
 .tp-bal-zero{color:var(--green);font-weight:700;}
-.tp-fbal-pos{color:var(--red);font-weight:700;}
-.tp-fbal-neg{color:var(--green);font-weight:700;}
-.tp-fbal-zero{color:var(--muted);font-weight:700;}
+.tp-fbal-pos{color:var(--red);font-weight:800;}
+.tp-fbal-zero{color:var(--green);font-weight:800;}
+.tp-table tfoot td{padding:8px;font-weight:800;font-size:12px;border-top:2px solid var(--border);background:#f1f5f9;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+.tp-table tfoot .tp-total-lbl{text-align:right;color:var(--navy);letter-spacing:.3px;}
 
 /* Empty */
 .empty-state{padding:60px 20px;text-align:center;color:var(--muted);}
@@ -565,6 +573,15 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px
                         </tr>
                     <% } %>
                     </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="4" class="tp-total-lbl">TOTAL</td>
+                            <td class="num tp-col-bill"><%=String.format("%.2f", tpTotalBill)%></td>
+                            <td class="num tp-col-paid" style="color:var(--green);"><%=String.format("%.2f", tpTotalPaid)%></td>
+                            <td class="num tp-col-balance <%=Math.abs(tpTotalBalance) < 0.005 ? "tp-fbal-zero" : "tp-fbal-pos"%>"><%=String.format("%.2f", tpTotalBalance)%></td>
+                            <td colspan="2"></td>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
         </div>

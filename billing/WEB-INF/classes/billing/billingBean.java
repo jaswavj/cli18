@@ -7456,6 +7456,195 @@ public Vector getBookingLedgerTotals(int bookingId, String partyType) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PENDING BALANCE COLLECTION — all outstanding ticket balances (no date filter)
+// Same row layout as getTicketLedgerReport(); only rows with balance > 0
+// agentId: 0 = all agents; customerOnly: true = CUSTOMER rows only, false = agent rows only
+// txnFilter: "" | "DR" | "CR"
+// ─────────────────────────────────────────────────────────────────────────────
+public Vector getPendingBalanceCollection(int agentId, boolean customerOnly, String txnFilter) {
+    Vector result = new Vector();
+    Connection con = null;
+    PreparedStatement pt = null;
+    ResultSet rs = null;
+    try {
+        con = util.DBConnectionManager.getConnectionFromPool();
+        java.util.HashSet seen = new java.util.HashSet();
+
+        String partyFilter = customerOnly
+            ? " AND l.party_type = 'CUSTOMER'"
+            : " AND l.party_type IN ('BUY_AGENT','SELL_AGENT')";
+        String sql =
+            "SELECT DISTINCT l.booking_id, l.party_type," +
+            " COALESCE(b.is_cancelled,0) AS is_cancelled," +
+            " COALESCE(b.buy_agent_id,0) AS buy_agent_id," +
+            " COALESCE(b.sell_agent_id,0) AS sell_agent_id" +
+            " FROM ticket_ledger l" +
+            " INNER JOIN ticket_booking b ON b.id = l.booking_id" +
+            " WHERE l.booking_id > 0" + partyFilter +
+            " ORDER BY l.booking_id DESC";
+
+        pt = con.prepareStatement(sql);
+        rs = pt.executeQuery();
+        while (rs.next()) {
+            int bookingId = rs.getInt("booking_id");
+            String partyType = rs.getString("party_type");
+            if (partyType == null || partyType.isEmpty()) continue;
+
+            int buyAgentId = rs.getInt("buy_agent_id");
+            int sellAgentId = rs.getInt("sell_agent_id");
+            boolean isCancelled = rs.getInt("is_cancelled") == 1;
+
+            if (!customerOnly && agentId > 0) {
+                if ("BUY_AGENT".equals(partyType) && buyAgentId != agentId) continue;
+                if ("SELL_AGENT".equals(partyType) && sellAgentId != agentId) continue;
+            }
+            if (customerOnly && !"CUSTOMER".equals(partyType)) continue;
+
+            String key = bookingId + "|" + partyType;
+            if (seen.contains(key)) continue;
+            seen.add(key);
+
+            Vector totals = getBookingLedgerTotals(bookingId, partyType);
+            double totalBill = totals.get(0) != null ? ((Number) totals.get(0)).doubleValue() : 0;
+            double totalPaid = totals.get(1) != null ? ((Number) totals.get(1)).doubleValue() : 0;
+            double balance = totals.get(2) != null ? ((Number) totals.get(2)).doubleValue() : 0;
+            String balDir = totals.get(3) != null ? totals.get(3).toString() : "NIL";
+
+            if (balance <= 0.005) continue;
+            if (txnFilter != null && !txnFilter.isEmpty() && !txnFilter.equals(balDir)) continue;
+
+            Vector row = buildPendingCollectionRow(con, bookingId, partyType, totalBill, totalPaid, isCancelled);
+            if (row != null) {
+                row.add(balDir);
+                result.add(row);
+            }
+        }
+    } catch (Exception e) { e.printStackTrace(); }
+    finally {
+        if (rs  != null) try { rs.close();  } catch (Exception e) { ; }
+        if (pt  != null) try { pt.close();  } catch (Exception e) { ; }
+        if (con != null) try { con.close(); } catch (Exception e) { ; }
+    }
+    return result;
+}
+
+private Vector buildPendingCollectionRow(Connection con, int bookingId, String partyType,
+        double totalBill, double totalPaid, boolean isCancelled) {
+    PreparedStatement pt = null;
+    ResultSet rs = null;
+    try {
+        String sql =
+            "SELECT COALESCE(b.ticket_no, CONCAT('TKT-', LPAD(b.id, 3, '0'))) AS ticket_no," +
+            " COALESCE(b.pnr, '-') AS pnr," +
+            " CASE WHEN ?='CUSTOMER' THEN COALESCE(NULLIF(TRIM(b.customer_name),''), '-')" +
+            "      ELSE COALESCE(ta.name, '-') END AS party_display," +
+            " (SELECT MAX(l.transaction_date) FROM ticket_ledger l" +
+            "  WHERE l.booking_id=b.id AND l.party_type=?) AS transaction_date," +
+            " CASE WHEN ?='BUY_AGENT' THEN COALESCE(b.buy_agent_id,0)" +
+            "      WHEN ?='SELL_AGENT' THEN COALESCE(b.sell_agent_id,0) ELSE 0 END AS agent_id," +
+            " CASE WHEN ?='CUSTOMER' THEN COALESCE(b.customer_name,'') ELSE '' END AS party_name," +
+            " COALESCE((SELECT pm.modes FROM ticket_ledger l" +
+            "  LEFT JOIN ticket_payment_mode pm ON pm.id=l.payment_mode_id" +
+            "  WHERE l.booking_id=b.id AND l.party_type=? ORDER BY l.id DESC LIMIT 1), '') AS payment_mode," +
+            " COALESCE((SELECT l.transaction_no FROM ticket_ledger l" +
+            "  WHERE l.booking_id=b.id AND l.party_type=? ORDER BY l.id DESC LIMIT 1), '') AS txn_no," +
+            " COALESCE((SELECT GROUP_CONCAT(passenger_name ORDER BY seat_no SEPARATOR ', ')" +
+            "  FROM ticket_passenger WHERE booking_id=b.id), '') AS passenger_names," +
+            " CASE WHEN ?='BUY_AGENT' THEN 'CR' ELSE 'DR' END AS transaction_type," +
+            " COALESCE((SELECT l.remarks FROM ticket_ledger l" +
+            "  WHERE l.booking_id=b.id AND l.party_type=?" +
+            (isCancelled ? " AND l.charge_type='CANCEL_CHARGE'" : "") +
+            "  ORDER BY l.id DESC LIMIT 1), '') AS remarks," +
+            " COALESCE((SELECT l.charge_type FROM ticket_ledger l" +
+            "  WHERE l.booking_id=b.id AND l.party_type=?" +
+            (isCancelled ? " AND l.charge_type='CANCEL_CHARGE'" : "") +
+            "  ORDER BY l.id DESC LIMIT 1), '') AS charge_type," +
+            " COALESCE((SELECT DATE_FORMAT(l.created_at, '%H:%i') FROM ticket_ledger l" +
+            "  WHERE l.booking_id=b.id AND l.party_type=? ORDER BY l.id DESC LIMIT 1), '') AS txn_time," +
+            " COALESCE((SELECT l.id FROM ticket_ledger l" +
+            "  WHERE l.booking_id=b.id AND l.party_type=?" +
+            (isCancelled ? " AND l.charge_type='CANCEL_CHARGE'" : "") +
+            "  ORDER BY l.id DESC LIMIT 1), 0) AS ledger_id," +
+            " COALESCE((SELECT l.cancel_charge FROM ticket_ledger l" +
+            "  WHERE l.booking_id=b.id AND l.party_type=? AND l.charge_type='CANCEL_CHARGE'" +
+            "  ORDER BY l.id DESC LIMIT 1), 0) AS cancel_charge," +
+            " COALESCE((SELECT l.bill_amount FROM ticket_ledger l" +
+            "  WHERE l.booking_id=b.id AND l.party_type=? AND l.charge_type='CANCEL_CHARGE'" +
+            "  ORDER BY l.id DESC LIMIT 1), 0) AS refund_due," +
+            " COALESCE(b.is_cancelled,0) AS is_cancelled" +
+            " FROM ticket_booking b" +
+            " LEFT JOIN ticket_agent ta ON ta.id = CASE" +
+            "   WHEN ?='BUY_AGENT' THEN b.buy_agent_id" +
+            "   WHEN ?='SELL_AGENT' THEN b.sell_agent_id ELSE NULL END" +
+            " WHERE b.id=?";
+
+        pt = con.prepareStatement(sql);
+        int p = 1;
+        pt.setString(p++, partyType);
+        pt.setString(p++, partyType);
+        pt.setString(p++, partyType);
+        pt.setString(p++, partyType);
+        pt.setString(p++, partyType);
+        pt.setString(p++, partyType);
+        pt.setString(p++, partyType);
+        pt.setString(p++, partyType);
+        pt.setString(p++, partyType);
+        pt.setString(p++, partyType);
+        pt.setString(p++, partyType);
+        pt.setString(p++, partyType);
+        pt.setString(p++, partyType);
+        pt.setString(p++, partyType);
+        pt.setString(p++, partyType);
+        pt.setString(p++, partyType);
+        pt.setInt(p++, bookingId);
+        rs = pt.executeQuery();
+        if (!rs.next()) return null;
+
+        String chargeType = rs.getString("charge_type");
+        if (chargeType == null) chargeType = "";
+        if (isCancelled) chargeType = "CANCEL_CHARGE";
+
+        double dispBill = totalBill;
+        double dispPaid = totalPaid;
+        double cancelChg = rs.getDouble("cancel_charge");
+        if (isCancelled) {
+            dispBill = cancelChg;
+            dispPaid = rs.getDouble("refund_due");
+        }
+
+        Vector row = new Vector();
+        row.add(Integer.valueOf(bookingId));
+        row.add(rs.getString("ticket_no"));
+        row.add(rs.getString("pnr"));
+        row.add(partyType);
+        row.add(rs.getString("party_display"));
+        row.add(Double.valueOf(dispBill));
+        row.add(Double.valueOf(dispPaid));
+        row.add(Double.valueOf(Math.max(0, dispBill - dispPaid)));
+        row.add(rs.getString("transaction_date"));
+        row.add(Integer.valueOf(rs.getInt("agent_id")));
+        row.add(rs.getString("party_name"));
+        row.add(rs.getString("payment_mode"));
+        row.add(rs.getString("txn_no"));
+        row.add(rs.getString("passenger_names"));
+        row.add(rs.getString("transaction_type"));
+        row.add(rs.getString("remarks"));
+        row.add(chargeType);
+        row.add(rs.getString("txn_time"));
+        row.add(Integer.valueOf(rs.getInt("ledger_id")));
+        row.add(Double.valueOf(cancelChg));
+        row.add(Integer.valueOf(rs.getInt("is_cancelled")));
+        return row;
+    } catch (Exception e) {
+        e.printStackTrace();
+        return null;
+    } finally {
+        if (rs  != null) try { rs.close();  } catch (Exception e) { ; }
+        if (pt  != null) try { pt.close();  } catch (Exception e) { ; }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // COLLECTION REPORT  — Sell to Customer + Sell to Agent ledger (with balance collections)
 // Row layout: [0]booking_id [1]ticket_no [2]pnr [3]party_type [4]party_display
 //             [5]txn_type   [6]total_bill [7]total_paid [8]balance
